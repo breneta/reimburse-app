@@ -342,11 +342,12 @@ function LoginScreen({ onLogin }) {
     const newAcc = { username:ukey, name:regName.trim(), dept:regDept, avatar:av, password:regPass };
     setBusy2(true);
     if (CONFIG.SCRIPT_URL) {
+      // Sheets mode: ignore localStorage sepenuhnya
       const res = await API.registerAcc(newAcc);
       setBusy2(false);
       if (!res?.ok) return setErr(res?.error || "Username sudah dipakai, pilih yang lain");
     } else {
-      // localStorage fallback
+      // localStorage fallback (offline mode)
       const accounts = lsGet2();
       if (accounts[ukey]) { setBusy2(false); return setErr("Username sudah dipakai"); }
       accounts[ukey] = newAcc;
@@ -363,10 +364,14 @@ function LoginScreen({ onLogin }) {
     const ukey = username.toLowerCase().trim();
     setBusy2(true);
     if (CONFIG.SCRIPT_URL) {
+      // Sheets mode: ignore localStorage sepenuhnya
       const res = await API.loginAcc(ukey, pass);
       setBusy2(false);
       if (!res?.ok) return setErr(res?.error || "Username atau password salah");
-      onLogin({ name:res.acc.name, dept:res.acc.dept, role:"employee", avatar:res.acc.avatar });
+      const name = res.name || res.acc?.name || ukey;
+      const dept = res.dept || res.acc?.dept || "-";
+      const av2  = name.split(" ").map(w=>w[0]).join("").toUpperCase().slice(0,2);
+      onLogin({ name, dept, role:"employee", avatar:av2 });
     } else {
       const accounts = lsGet2();
       const acc = accounts[ukey];
