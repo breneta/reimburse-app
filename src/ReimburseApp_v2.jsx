@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 // ═══════════════════════════════════════════════════════════════
 // ⚙️  KONFIGURASI — GANTI SESUAI KEBUTUHAN
@@ -52,11 +52,19 @@ const API = {
       return await r.json();
     } catch { return null; }
   },
-  getAll:  ()      => API.post("getAll"),
-  create:  (data)  => API.post("create",       { data }),
-  update:  (id,s,n)=> API.post("updateStatus", { id, status:s, note:n }),
-  settle:  (id,n)  => API.post("settle",        { id, note:n }),
+  getAll:      ()       => API.post("getAll"),
+  create:      (data)   => API.post("create",       { data }),
+  update:      (id,s,n) => API.post("updateStatus", { id, status:s, note:n }),
+  settle:      (id,n)   => API.post("settle",       { id, note:n }),
+  registerAcc: (acc)    => API.post("registerAcc",  { acc }),
+  loginAcc:    (u,p)    => API.post("loginAcc",     { username:u, password:p }),
+  editData:    (id,d)   => API.post("editData",     { id, data:d }),
 };
+
+// ── Local account fallback (when Sheets not configured) ───────
+const LS_KEY = "reimburse_accounts_v3";
+const lsGet  = () => { try { return JSON.parse(localStorage.getItem(LS_KEY)||"{}"); } catch { return {}; } };
+const lsSave = (a) => { try { localStorage.setItem(LS_KEY, JSON.stringify(a)); } catch {} };
 
 // ═══════════════════════════════════════════════════════════════
 // STYLES
@@ -96,7 +104,7 @@ body{font-family:'Sora',sans-serif;background:var(--bg);color:var(--ink);-webkit
 .l-fld input,.l-fld select{width:100%;padding:10px 12px;border:1.5px solid var(--ln);border-radius:var(--r3);font-family:inherit;font-size:13.5px;color:var(--ink);outline:none;transition:.15s}
 .l-fld input:focus,.l-fld select:focus{border-color:var(--tl);box-shadow:0 0 0 3px rgba(13,148,136,.1)}
 .l-btn{width:100%;padding:12px;border-radius:var(--r2);border:none;cursor:pointer;font-family:inherit;font-size:14px;font-weight:700;background:var(--tl);color:#fff;box-shadow:0 4px 12px rgba(13,148,136,.3);transition:.15s;margin-top:4px}
-.l-btn:hover{background:#0f766e}
+.l-btn:hover:not(:disabled){background:#0f766e}.l-btn:disabled{opacity:.6;cursor:not-allowed}
 .l-err{background:var(--rdb);border:1px solid var(--rdbd);color:#991b1b;padding:9px 12px;border-radius:var(--r3);font-size:12.5px;margin-bottom:12px;display:flex;align-items:center;gap:7px}
 .l-note{background:var(--tlb);border:1px solid var(--tlbd);color:#134e4a;padding:10px 12px;border-radius:var(--r3);font-size:12px;margin-top:12px;line-height:1.6}
 
@@ -254,49 +262,129 @@ const Ic = ({ n, s=16, c="currentColor" }) => (
 const SBadge = ({ s }) => { const c=STATUS[s]||{label:s,color:"#475569",bg:"#f1f5f9"}; return <span className="badge" style={{color:c.color,background:c.bg}}>{c.label}</span>; };
 const TTag = ({ t }) => t==="cash_advance"?<span className="tag tca">Cash Advance</span>:<span className="tag tre">Reimburse</span>;
 
+// ── Local account store (localStorage fallback) ──────────────
+const LS_KEY2  = "reimburse_accounts_v3";
+const lsGet2   = () => { try { return JSON.parse(localStorage.getItem(LS_KEY2)||"{}"); } catch { return {}; } };
+const lsSave2  = (a) => { try { localStorage.setItem(LS_KEY2, JSON.stringify(a)); } catch {} };
+
 // ═══════════════════════════════════════════════════════════════
 // LOGIN SCREEN
 // ═══════════════════════════════════════════════════════════════
 function LoginScreen({ onLogin }) {
-  const [tab,setTab]   = useState("karyawan");
-  const [name,setName] = useState("");
-  const [dept,setDept] = useState("");
-  const [role,setRole] = useState("approver");
-  const [pass,setPass] = useState("");
-  const [show,setShow] = useState(false);
-  const [err,setErr]   = useState("");
+  const [tab,setTab]     = useState("karyawan"); // karyawan | staff
+  const [mode,setMode]   = useState("login");    // login | register (karyawan only)
 
-  const doEmployee = () => {
-    if (!name.trim()) return setErr("Nama tidak boleh kosong");
-    if (!dept) return setErr("Pilih departemen dulu");
-    const av = name.trim().split(" ").map(w=>w[0]).join("").toUpperCase().slice(0,2);
-    onLogin({ name:name.trim(), dept, role:"employee", avatar:av });
+  // shared fields
+  const [err,setErr]     = useState("");
+  const [show,setShow]   = useState(false);
+  const [show2,setShow2] = useState(false);
+
+  // karyawan login fields
+  const [username,setUsername] = useState("");
+  const [pass,setPass]         = useState("");
+
+  // karyawan register fields
+  const [regName,setRegName]   = useState("");
+  const [regDept,setRegDept]   = useState("");
+  const [regUser,setRegUser]   = useState("");
+  const [regPass,setRegPass]   = useState("");
+  const [regPass2,setRegPass2] = useState("");
+
+  // staff fields
+  const [role,setRole]         = useState("approver");
+  const [staffPass,setStaffPass]=useState("");
+
+  const clr = () => setErr("");
+
+  const [busy2,setBusy2] = useState(false);
+
+  // ── Register karyawan (Sheets + localStorage fallback) ────
+  const doRegister = async () => {
+    if (!regName.trim())       return setErr("Nama tidak boleh kosong");
+    if (!regDept)              return setErr("Pilih departemen dulu");
+    if (!regUser.trim())       return setErr("Username tidak boleh kosong");
+    if (regUser.includes(" ")) return setErr("Username tidak boleh mengandung spasi");
+    if (regPass.length < 4)    return setErr("Password minimal 4 karakter");
+    if (regPass !== regPass2)  return setErr("Konfirmasi password tidak cocok");
+    const ukey = regUser.toLowerCase().trim();
+    const av   = regName.trim().split(" ").map(w=>w[0]).join("").toUpperCase().slice(0,2);
+    const newAcc = { username:ukey, name:regName.trim(), dept:regDept, avatar:av, password:regPass };
+    setBusy2(true);
+    if (CONFIG.SCRIPT_URL) {
+      const res = await API.registerAcc(newAcc);
+      setBusy2(false);
+      if (!res?.ok) return setErr(res?.error || "Username sudah dipakai, pilih yang lain");
+    } else {
+      // localStorage fallback
+      const accounts = lsGet2();
+      if (accounts[ukey]) { setBusy2(false); return setErr("Username sudah dipakai"); }
+      accounts[ukey] = newAcc;
+      lsSave2(accounts);
+      setBusy2(false);
+    }
+    onLogin({ name:newAcc.name, dept:newAcc.dept, role:"employee", avatar:av });
   };
 
+  // ── Login karyawan (Sheets + localStorage fallback) ───────
+  const doLogin = async () => {
+    if (!username.trim()) return setErr("Masukkan username");
+    if (!pass)            return setErr("Masukkan password");
+    const ukey = username.toLowerCase().trim();
+    setBusy2(true);
+    if (CONFIG.SCRIPT_URL) {
+      const res = await API.loginAcc(ukey, pass);
+      setBusy2(false);
+      if (!res?.ok) return setErr(res?.error || "Username atau password salah");
+      onLogin({ name:res.acc.name, dept:res.acc.dept, role:"employee", avatar:res.acc.avatar });
+    } else {
+      const accounts = lsGet2();
+      const acc = accounts[ukey];
+      setBusy2(false);
+      if (!acc)             return setErr("Username tidak ditemukan");
+      if (acc.password !== pass) return setErr("Password salah!");
+      onLogin({ name:acc.name, dept:acc.dept, role:"employee", avatar:acc.avatar });
+    }
+  };
+
+  // ── Login staff (approver / finance) ──────────────────────
   const doStaff = () => {
     const correct = role==="approver" ? CONFIG.PASS_APPROVER : CONFIG.PASS_FINANCE;
-    if (pass !== correct) return setErr("Password salah!");
+    if (staffPass !== correct) return setErr("Password salah!");
     const info = role==="approver"
       ? { name:"Approver", dept:"Management", avatar:"AP" }
       : { name:"Finance",  dept:"Finance",    avatar:"FN" };
     onLogin({ ...info, role });
   };
 
+  const PwInput = ({ value, onChange, placeholder, showState, toggleShow, onEnter }) => (
+    <div style={{position:"relative"}}>
+      <input type={showState?"text":"password"} value={value}
+        onChange={e=>{onChange(e.target.value);clr();}}
+        placeholder={placeholder}
+        onKeyDown={e=>e.key==="Enter"&&onEnter&&onEnter()}
+        style={{paddingRight:42}}/>
+      <button onClick={toggleShow} style={{position:"absolute",right:10,top:"50%",transform:"translateY(-50%)",background:"none",border:"none",cursor:"pointer",fontSize:16,color:"var(--i3)"}}>
+        {showState?"🙈":"👁️"}
+      </button>
+    </div>
+  );
+
   return (
     <div className="lw">
       <div className="lr1"/><div className="lr2"/>
       <div className="lc">
         {/* Logo */}
-        <div style={{textAlign:"center",marginBottom:26}}>
+        <div style={{textAlign:"center",marginBottom:24}}>
           <div className="l-ico">💼</div>
           <h1 style={{fontFamily:"'Playfair Display',serif",fontSize:22,fontStyle:"italic",color:"var(--ink)"}}>ReimburseApp</h1>
           <p style={{fontSize:12,color:"var(--i3)",marginTop:3}}>Sistem Reimburse & Cash Advance</p>
         </div>
 
-        {/* Tabs */}
+        {/* Tabs: Karyawan vs Staff */}
         <div className="l-tabs">
-          {[["karyawan","👤  Karyawan"],["staff","🔐  Approver / Finance"]].map(([v,l])=>(
-            <button key={v} className={`l-tab${tab===v?" on":""}`} onClick={()=>{setTab(v);setErr("");setPass("");}}>
+          {[["karyawan","👤  Karyawan"],["staff","🔐  Admin / Finance"]].map(([v,l])=>(
+            <button key={v} className={`l-tab${tab===v?" on":""}`}
+              onClick={()=>{setTab(v);setErr("");setMode("login");}}>
               {l}
             </button>
           ))}
@@ -304,49 +392,90 @@ function LoginScreen({ onLogin }) {
 
         {err && <div className="l-err"><Ic n="x" s={13} c="#dc2626"/>{err}</div>}
 
-        {tab==="karyawan" ? (
+        {/* ── KARYAWAN TAB ── */}
+        {tab==="karyawan" && mode==="login" && (
           <>
             <div className="l-fld">
+              <label>Username</label>
+              <input value={username} onChange={e=>{setUsername(e.target.value);clr();}}
+                placeholder="Username yang sudah didaftarkan" autoFocus
+                onKeyDown={e=>e.key==="Enter"&&doLogin()}/>
+            </div>
+            <div className="l-fld">
+              <label>Password</label>
+              <PwInput value={pass} onChange={setPass} placeholder="Password kamu"
+                showState={show} toggleShow={()=>setShow(s=>!s)} onEnter={doLogin}/>
+            </div>
+            <button className="l-btn" onClick={doLogin} disabled={busy2}>{busy2?<span className="sp2"/>:"Masuk →"}</button>
+            <div style={{textAlign:"center",marginTop:14}}>
+              <span style={{fontSize:12.5,color:"var(--i3)"}}>Belum punya akun? </span>
+              <button onClick={()=>{setMode("register");setErr("");}} style={{background:"none",border:"none",cursor:"pointer",fontSize:12.5,fontWeight:700,color:"var(--tl)",fontFamily:"inherit"}}>
+                Daftar sekarang
+              </button>
+            </div>
+          </>
+        )}
+
+        {tab==="karyawan" && mode==="register" && (
+          <>
+            <div style={{background:"var(--tlb)",border:"1px solid var(--tlbd)",borderRadius:"var(--r3)",padding:"9px 12px",marginBottom:14,fontSize:12,color:"#134e4a"}}>
+              ✨ Daftar sekali, langsung bisa login kapan saja dari HP atau laptop.
+            </div>
+            <div className="l-fld">
               <label>Nama Lengkap <span style={{color:"var(--rd)"}}>*</span></label>
-              <input value={name} onChange={e=>{setName(e.target.value);setErr("");}}
-                placeholder="Ketik nama lengkap kamu" onKeyDown={e=>e.key==="Enter"&&doEmployee()}
-                autoFocus/>
+              <input value={regName} onChange={e=>{setRegName(e.target.value);clr();}} placeholder="Nama lengkap kamu" autoFocus/>
             </div>
             <div className="l-fld">
               <label>Departemen <span style={{color:"var(--rd)"}}>*</span></label>
-              <select value={dept} onChange={e=>{setDept(e.target.value);setErr("");}}>
+              <select value={regDept} onChange={e=>{setRegDept(e.target.value);clr();}}>
                 <option value="">-- Pilih Departemen --</option>
                 {DEPTS.map(d=><option key={d}>{d}</option>)}
               </select>
             </div>
-            <button className="l-btn" onClick={doEmployee}>Masuk sebagai Karyawan →</button>
-            <div className="l-note">ℹ️ Kamu bisa submit pengajuan reimburse dan cash advance, serta memantau statusnya.</div>
+            <div className="l-fld">
+              <label>Username <span style={{color:"var(--rd)"}}>*</span></label>
+              <input value={regUser} onChange={e=>{setRegUser(e.target.value);clr();}} placeholder="Contoh: budi.santoso"/>
+              <p style={{fontSize:11,color:"var(--i3)",marginTop:3}}>Huruf kecil, tanpa spasi. Dipakai untuk login berikutnya.</p>
+            </div>
+            <div className="l-fld">
+              <label>Password <span style={{color:"var(--rd)"}}>*</span></label>
+              <PwInput value={regPass} onChange={setRegPass} placeholder="Min. 4 karakter"
+                showState={show} toggleShow={()=>setShow(s=>!s)}/>
+            </div>
+            <div className="l-fld">
+              <label>Konfirmasi Password <span style={{color:"var(--rd)"}}>*</span></label>
+              <PwInput value={regPass2} onChange={setRegPass2} placeholder="Ulangi password"
+                showState={show2} toggleShow={()=>setShow2(s=>!s)} onEnter={doRegister}/>
+            </div>
+            <button className="l-btn" onClick={doRegister} disabled={busy2}>{busy2?<span className="sp2"/>:"Daftar & Masuk →"}</button>
+            <div style={{textAlign:"center",marginTop:14}}>
+              <span style={{fontSize:12.5,color:"var(--i3)"}}>Sudah punya akun? </span>
+              <button onClick={()=>{setMode("login");setErr("");}} style={{background:"none",border:"none",cursor:"pointer",fontSize:12.5,fontWeight:700,color:"var(--tl)",fontFamily:"inherit"}}>
+                Login di sini
+              </button>
+            </div>
           </>
-        ) : (
+        )}
+
+        {/* ── STAFF TAB ── */}
+        {tab==="staff" && (
           <>
             <div className="l-fld">
-              <label>Masuk sebagai</label>
-              <select value={role} onChange={e=>{setRole(e.target.value);setErr("");}}>
-                <option value="approver">✅  Approver / Atasan</option>
+              <label>Login sebagai</label>
+              <select value={role} onChange={e=>{setRole(e.target.value);clr();}}>
+                <option value="approver">✅  Approver / Admin</option>
                 <option value="finance">💼  Finance</option>
               </select>
             </div>
             <div className="l-fld">
               <label>Password <span style={{color:"var(--rd)"}}>*</span></label>
-              <div style={{position:"relative"}}>
-                <input type={show?"text":"password"} value={pass}
-                  onChange={e=>{setPass(e.target.value);setErr("");}}
-                  placeholder="Masukkan password" onKeyDown={e=>e.key==="Enter"&&doStaff()}
-                  style={{paddingRight:42}} autoFocus/>
-                <button onClick={()=>setShow(s=>!s)} style={{position:"absolute",right:10,top:"50%",transform:"translateY(-50%)",background:"none",border:"none",cursor:"pointer",color:"var(--i3)",fontSize:16}}>
-                  {show?"🙈":"👁️"}
-                </button>
-              </div>
+              <PwInput value={staffPass} onChange={setStaffPass} placeholder="Masukkan password"
+                showState={show} toggleShow={()=>setShow(s=>!s)} onEnter={doStaff}/>
             </div>
             <button className="l-btn" onClick={doStaff}>Masuk →</button>
             <div className="l-note">
               🔑 Password default: <strong>approver123</strong> / <strong>finance123</strong><br/>
-              Ganti password di menu <strong>Pengaturan</strong> (login Finance) setelah masuk.
+              Ganti di menu <strong>Pengaturan</strong> (login Finance).
             </div>
           </>
         )}
@@ -677,11 +806,126 @@ function SettingsPage({ onSave }) {
 }
 
 // ═══════════════════════════════════════════════════════════════
+// EDIT FORM (shared by karyawan & finance)
+// ═══════════════════════════════════════════════════════════════
+function EditForm({ trx, user, onSave, onCancel }) {
+  const [f,setF] = useState({
+    type:        trx.type,
+    purpose:     trx.purpose,
+    destination: trx.destination,
+    dateStart:   trx.dateStart,
+    dateEnd:     trx.dateEnd,
+    approverName:trx.approverName,
+    notes:       trx.notes||"",
+    items:       trx.categories.map(c=>({cat:c.cat, amt:String(c.amt)})),
+  });
+  const [busy,setBusy] = useState(false);
+  const set  = (k,v) => setF(p=>({...p,[k]:v}));
+  const si   = (i,k,v) => setF(p=>{const it=[...p.items];it[i]={...it[i],[k]:v};return{...p,items:it};});
+  const total = f.items.reduce((a,it)=>a+(parseFloat(it.amt)||0),0);
+  const isFin = user.role==="finance";
+
+  const save = async () => {
+    if (!f.purpose||!f.dateStart||!f.dateEnd||!f.approverName||total===0){alert("Harap lengkapi semua field wajib.");return;}
+    setBusy(true);
+    const updated = {
+      ...trx,
+      type:        f.type,
+      purpose:     f.purpose,
+      destination: f.destination,
+      dateStart:   f.dateStart,
+      dateEnd:     f.dateEnd,
+      approverName:f.approverName,
+      notes:       f.notes,
+      amount:      total,
+      categories:  f.items.map(it=>({cat:it.cat, amt:parseFloat(it.amt)||0})),
+    };
+    if (CONFIG.SCRIPT_URL) await API.editData(trx.id, updated);
+    else await new Promise(r=>setTimeout(r,400));
+    setBusy(false);
+    onSave(updated);
+  };
+
+  return (
+    <div style={{padding:"4px 0"}}>
+      <div className="al aw mb4" style={{marginBottom:14}}>
+        <Ic n="alert" s={14} c="#d97706"/>
+        <span>{isFin ? "Mode Edit Finance — semua field bisa diubah." : "Edit Pengajuan — perubahan akan disimpan langsung."}</span>
+      </div>
+
+      {/* Jenis */}
+      <div className="fs mb3">
+        <div className="fst">Jenis Pengajuan</div>
+        <div style={{display:"flex",gap:9}}>
+          {[["reimburse","💰 Reimburse"],["cash_advance","🏦 Cash Advance"]].map(([v,l])=>(
+            <label key={v} style={{flex:1,display:"flex",alignItems:"center",gap:8,padding:"9px 12px",borderRadius:"var(--r2)",border:`2px solid ${f.type===v?"var(--tl)":"var(--ln)"}`,background:f.type===v?"var(--tlb)":"var(--w)",cursor:"pointer",margin:0}}>
+              <input type="radio" name="etp" checked={f.type===v} onChange={()=>set("type",v)} style={{width:"auto",accentColor:"var(--tl)"}}/>
+              <span style={{fontSize:13,fontWeight:700}}>{l}</span>
+            </label>
+          ))}
+        </div>
+      </div>
+
+      {/* Detail */}
+      <div className="fs mb3">
+        <div className="fst">Detail Perjalanan</div>
+        <div className="fg mb3">
+          <label className="fl">Keperluan *</label>
+          <textarea value={f.purpose} onChange={e=>set("purpose",e.target.value)} rows={2}/>
+        </div>
+        <div className="fg fg3">
+          <div><label className="fl">Kota Tujuan</label><input value={f.destination} onChange={e=>set("destination",e.target.value)}/></div>
+          <div><label className="fl">Tgl Mulai</label><input type="date" value={f.dateStart} onChange={e=>set("dateStart",e.target.value)}/></div>
+          <div><label className="fl">Tgl Selesai</label><input type="date" value={f.dateEnd} onChange={e=>set("dateEnd",e.target.value)}/></div>
+        </div>
+      </div>
+
+      {/* Biaya */}
+      <div className="fs mb3">
+        <div className="fst">Rincian Biaya</div>
+        {f.items.map((it,i)=>(
+          <div key={i} style={{display:"flex",gap:9,alignItems:"flex-end",marginBottom:8}}>
+            <div style={{flex:2}}>{i===0&&<label className="fl">Kategori</label>}
+              <select value={it.cat} onChange={e=>si(i,"cat",e.target.value)}>{CATS.map(c=><option key={c}>{c}</option>)}</select>
+            </div>
+            <div style={{flex:1.5}}>{i===0&&<label className="fl">Nominal (Rp)</label>}
+              <input type="number" value={it.amt} onChange={e=>si(i,"amt",e.target.value)} placeholder="0" min="0"/>
+            </div>
+            {f.items.length>1&&<button className="btn bo xs" onClick={()=>setF(p=>({...p,items:p.items.filter((_,j)=>j!==i)}))} style={{color:"var(--rd)",borderColor:"#fca5a5",flexShrink:0}}><Ic n="trash" s={12}/></button>}
+          </div>
+        ))}
+        <button className="btn bo sm" onClick={()=>setF(p=>({...p,items:[...p.items,{cat:"Perjalanan Dinas",amt:""}]}))}><Ic n="plus" s={12}/>Tambah Item</button>
+        {total>0&&<div style={{marginTop:10,padding:"9px 13px",background:"var(--tlb)",border:"1px solid var(--tlbd)",borderRadius:"var(--r2)",display:"flex",justifyContent:"space-between"}}>
+          <span style={{fontWeight:700,color:"var(--tl)"}}>Total</span>
+          <span style={{fontWeight:800,fontSize:15,color:"var(--tl)"}}>{rp(total)}</span>
+        </div>}
+      </div>
+
+      {/* Atasan & catatan */}
+      <div className="fg fg2 mb3">
+        <div className="fs"><div className="fst">Nama Atasan *</div><input value={f.approverName} onChange={e=>set("approverName",e.target.value)}/></div>
+        <div className="fs"><div className="fst">Catatan</div><textarea value={f.notes} onChange={e=>set("notes",e.target.value)} rows={2}/></div>
+      </div>
+
+      <div style={{display:"flex",justifyContent:"flex-end",gap:9}}>
+        <button className="btn bo" onClick={onCancel} disabled={busy}>Batal</button>
+        <button className="btn bp" onClick={save} disabled={busy}>{busy?<span className="sp2"/>:<Ic n="check" s={13}/>}{busy?"Menyimpan...":"Simpan Perubahan"}</button>
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
 // DETAIL MODAL
 // ═══════════════════════════════════════════════════════════════
-function DetailModal({ trx, user, onClose, onAction }) {
-  const [note,setNote] = useState(""); const [busy,setBusy] = useState(false);
-  const isApp = user.role==="approver"; const isFin = user.role==="finance";
+function DetailModal({ trx, user, onClose, onAction, onEdit }) {
+  const [note,setNote]   = useState("");
+  const [busy,setBusy]   = useState(false);
+  const [editing,setEditing] = useState(false);
+  const isApp = user.role==="approver";
+  const isFin = user.role==="finance";
+  const isOwner = user.role==="employee" && trx.submitter===user.name;
+  const canEdit = (isFin || (isOwner && trx.status!=="paid" && trx.status!=="rejected"));
 
   const act = async (action, n) => {
     setBusy(true);
@@ -698,7 +942,7 @@ function DetailModal({ trx, user, onClose, onAction }) {
   };
 
   const tl = [
-    {ok:true,  icon:"send",  title:"Pengajuan Dikirim",  sub:`${trx.submitter} · ${fd(trx.submitted)}`,                          col:"var(--tl)"},
+    {ok:true,  icon:"send",  title:"Pengajuan Dikirim",  sub:`${trx.submitter} · ${fd(trx.submitted)}`, col:"var(--tl)"},
     {ok:!["pending"].includes(trx.status), icon:"user", title:"Approval Atasan", sub:trx.status==="pending"?"Menunggu…":trx.approverName, col:trx.status==="pending"?"var(--am)":"var(--gn)"},
     {ok:["processing","paid"].includes(trx.status), icon:"money", title:"Diproses Finance", sub:trx.status==="processing"?"Sedang diproses…":trx.status==="paid"?"Selesai":"Belum", col:trx.status==="paid"?"var(--gn)":"var(--i4)"},
     {ok:trx.status==="paid", icon:"check", title:"Pembayaran", sub:trx.status==="paid"?`Dibayar · ${fd(trx.settledDate)}`:"Menunggu", col:trx.status==="paid"?"var(--gn)":"var(--i4)"},
@@ -708,82 +952,106 @@ function DetailModal({ trx, user, onClose, onAction }) {
     <div className="ov" onClick={e=>e.target===e.currentTarget&&onClose()}>
       <div className="mo">
         <div className="mh">
-          <div style={{flex:1}}><span className="mono">{trx.id}</span><h2 style={{fontSize:15,fontWeight:800,marginTop:3}}>{trx.purpose}</h2></div>
-          <button className="btn bo sm" onClick={onClose}><Ic n="x" s={13}/></button>
+          <div style={{flex:1}}>
+            <span className="mono">{trx.id}</span>
+            <h2 style={{fontSize:15,fontWeight:800,marginTop:3}}>{trx.purpose}</h2>
+          </div>
+          <div style={{display:"flex",gap:6,alignItems:"center"}}>
+            {canEdit && !editing && (
+              <button className="btn bo sm" onClick={()=>setEditing(true)} style={{color:"var(--bl)",borderColor:"var(--blbd)"}}>
+                ✏️ Edit
+              </button>
+            )}
+            {editing && (
+              <span style={{fontSize:11,fontWeight:700,color:"var(--am)",background:"var(--amb)",padding:"3px 9px",borderRadius:20}}>Mode Edit</span>
+            )}
+            <button className="btn bo sm" onClick={onClose}><Ic n="x" s={13}/></button>
+          </div>
         </div>
         <div className="mb2">
-          <div style={{display:"flex",flexWrap:"wrap",gap:7,alignItems:"center",padding:"9px 13px",background:"var(--ln2)",borderRadius:"var(--r2)",marginBottom:16}}>
-            <TTag t={trx.type}/><SBadge s={trx.status}/><span style={{marginLeft:"auto",fontSize:11,color:"var(--i3)"}}>Diajukan {fd(trx.submitted)}</span>
-          </div>
-          {trx.status==="rejected"&&trx.financeNote&&<div className="al ae mb4"><Ic n="x" s={13} c="#dc2626"/><span><strong>Alasan:</strong> {trx.financeNote}</span></div>}
-          {trx.financeNote&&trx.status!=="rejected"&&<div className="al ab mb4"><Ic n="bell" s={13} c="#2563eb"/><span>{trx.financeNote}</span></div>}
-
-          <div className="g2 mb4">
-            <div>
-              <p style={{fontSize:10.5,fontWeight:800,color:"var(--i3)",textTransform:"uppercase",letterSpacing:".06em",marginBottom:7}}>Pemohon</p>
-              <p className="bold">{trx.submitter}</p><p style={{fontSize:12,color:"var(--i3)"}}>{trx.dept}</p>
-              <p style={{fontSize:12,color:"var(--i3)",marginTop:4}}>Atasan: {trx.approverName}</p>
-            </div>
-            <div>
-              <p style={{fontSize:10.5,fontWeight:800,color:"var(--i3)",textTransform:"uppercase",letterSpacing:".06em",marginBottom:7}}>Perjalanan</p>
-              <p className="bold">{trx.destination}</p><p style={{fontSize:12,color:"var(--i3)"}}>{fd(trx.dateStart)} – {fd(trx.dateEnd)}</p>
-              {trx.type==="cash_advance"&&<p style={{fontSize:12,fontWeight:700,marginTop:4,color:trx.settled?"var(--gn)":"var(--am)"}}>Settlement: {trx.settled?`✓ ${fd(trx.settledDate)}`:"Belum"}</p>}
-            </div>
-          </div>
-
-          <div style={{border:"1px solid var(--ln)",borderRadius:"var(--r2)",overflow:"hidden",marginBottom:16}}>
-            <div style={{background:"var(--ln2)",padding:"8px 14px",fontSize:10.5,fontWeight:800,color:"var(--i3)",textTransform:"uppercase",letterSpacing:".06em"}}>Rincian Biaya</div>
-            {trx.categories.map((c,i)=>(
-              <div key={i} style={{display:"flex",justifyContent:"space-between",padding:"9px 14px",borderBottom:i<trx.categories.length-1?"1px solid var(--ln)":"none",fontSize:13}}>
-                <span>{c.cat}</span><span className="bold">{rp(c.amt)}</span>
+          {editing ? (
+            <EditForm
+              trx={trx}
+              user={user}
+              onSave={(updated) => { setEditing(false); onEdit(updated); }}
+              onCancel={() => setEditing(false)}
+            />
+          ) : (
+            <>
+              <div style={{display:"flex",flexWrap:"wrap",gap:7,alignItems:"center",padding:"9px 13px",background:"var(--ln2)",borderRadius:"var(--r2)",marginBottom:16}}>
+                <TTag t={trx.type}/><SBadge s={trx.status}/><span style={{marginLeft:"auto",fontSize:11,color:"var(--i3)"}}>Diajukan {fd(trx.submitted)}</span>
               </div>
-            ))}
-            <div style={{display:"flex",justifyContent:"space-between",padding:"11px 14px",background:"var(--tlb)",borderTop:"2px solid var(--tl)"}}>
-              <span style={{fontWeight:800,color:"var(--tl)"}}>TOTAL</span>
-              <span style={{fontWeight:800,fontSize:16,color:"var(--tl)"}}>{rp(trx.amount)}</span>
-            </div>
-          </div>
+              {trx.status==="rejected"&&trx.financeNote&&<div className="al ae mb4"><Ic n="x" s={13} c="#dc2626"/><span><strong>Alasan:</strong> {trx.financeNote}</span></div>}
+              {trx.financeNote&&trx.status!=="rejected"&&<div className="al ab mb4"><Ic n="bell" s={13} c="#2563eb"/><span>{trx.financeNote}</span></div>}
 
-          {trx.notes&&<div className="al at mb4"><Ic n="bell" s={13} c="var(--tl)"/><span>{trx.notes}</span></div>}
-
-          <p style={{fontSize:10.5,fontWeight:800,color:"var(--i3)",textTransform:"uppercase",letterSpacing:".08em",marginBottom:10}}>Progress</p>
-          <div>{tl.map((t,i)=>(
-            <div key={i} className="tlr">
-              <div className="tldc"><div className="tld" style={{background:t.ok?t.col:"var(--ln)"}}><Ic n={t.icon} s={12} c={t.ok?"#fff":"var(--i4)"}/></div>{i<tl.length-1&&<div className="tlln"/>}</div>
-              <div className="tlb"><div className="tlt" style={{color:t.ok?"var(--ink)":"var(--i4)"}}>{t.title}</div><div className="tls">{t.sub}</div></div>
-            </div>
-          ))}</div>
-
-          {isApp&&trx.status==="pending"&&(
-            <div style={{marginTop:16,padding:14,background:"var(--ln2)",borderRadius:"var(--r2)",border:"1px solid var(--ln)"}}>
-              <p style={{fontSize:13,fontWeight:700,marginBottom:9}}>Tindakan Approval</p>
-              <textarea value={note} onChange={e=>setNote(e.target.value)} placeholder="Catatan (opsional)..." rows={2} style={{marginBottom:9}}/>
-              <div style={{display:"flex",gap:8}}>
-                <button className="btn bg" onClick={()=>act("approve",note||"Disetujui")} disabled={busy}>{busy?<span className="sp2"/>:<Ic n="check" s={13}/>}Setujui</button>
-                <button className="btn br2" onClick={()=>act("reject",note||"Ditolak")} disabled={busy}><Ic n="x" s={13}/>Tolak</button>
+              <div className="g2 mb4">
+                <div>
+                  <p style={{fontSize:10.5,fontWeight:800,color:"var(--i3)",textTransform:"uppercase",letterSpacing:".06em",marginBottom:7}}>Pemohon</p>
+                  <p className="bold">{trx.submitter}</p><p style={{fontSize:12,color:"var(--i3)"}}>{trx.dept}</p>
+                  <p style={{fontSize:12,color:"var(--i3)",marginTop:4}}>Atasan: {trx.approverName}</p>
+                </div>
+                <div>
+                  <p style={{fontSize:10.5,fontWeight:800,color:"var(--i3)",textTransform:"uppercase",letterSpacing:".06em",marginBottom:7}}>Perjalanan</p>
+                  <p className="bold">{trx.destination}</p><p style={{fontSize:12,color:"var(--i3)"}}>{fd(trx.dateStart)} – {fd(trx.dateEnd)}</p>
+                  {trx.type==="cash_advance"&&<p style={{fontSize:12,fontWeight:700,marginTop:4,color:trx.settled?"var(--gn)":"var(--am)"}}>Settlement: {trx.settled?`✓ ${fd(trx.settledDate)}`:"Belum"}</p>}
+                </div>
               </div>
-            </div>
-          )}
-          {isFin&&trx.status==="approved"&&(
-            <div style={{marginTop:16,padding:14,background:"var(--ln2)",borderRadius:"var(--r2)",border:"1px solid var(--ln)"}}>
-              <p style={{fontSize:13,fontWeight:700,marginBottom:9}}>Mulai Proses</p>
-              <textarea value={note} onChange={e=>setNote(e.target.value)} placeholder="Catatan Finance..." rows={2} style={{marginBottom:9}}/>
-              <button className="btn bp" onClick={()=>act("process",note)} disabled={busy}>{busy?<span className="sp2"/>:<Ic n="money" s={13}/>}Mulai Proses</button>
-            </div>
-          )}
-          {isFin&&trx.status==="processing"&&(
-            <div style={{marginTop:16,padding:14,background:"var(--ln2)",borderRadius:"var(--r2)",border:"1px solid var(--ln)"}}>
-              <p style={{fontSize:13,fontWeight:700,marginBottom:9}}>Konfirmasi Pembayaran</p>
-              <textarea value={note} onChange={e=>setNote(e.target.value)} placeholder="No. referensi transfer..." rows={2} style={{marginBottom:9}}/>
-              <button className="btn bg" onClick={()=>act("pay",note)} disabled={busy}>{busy?<span className="sp2"/>:<Ic n="check" s={13}/>}Tandai Sudah Dibayar</button>
-            </div>
-          )}
-          {isFin&&trx.status==="paid"&&trx.type==="cash_advance"&&!trx.settled&&(
-            <div style={{marginTop:16,padding:14,background:"var(--amb)",borderRadius:"var(--r2)",border:"1px solid var(--ambd)"}}>
-              <p style={{fontSize:13,fontWeight:700,marginBottom:4,color:"#78350f"}}>⚠️ CA Belum Diselesaikan</p>
-              <textarea value={note} onChange={e=>setNote(e.target.value)} placeholder="Catatan settlement..." rows={2} style={{marginBottom:9}}/>
-              <button className="btn bg" onClick={settle} disabled={busy}>{busy?<span className="sp2"/>:<Ic n="check" s={13}/>}Konfirmasi Settlement</button>
-            </div>
+
+              <div style={{border:"1px solid var(--ln)",borderRadius:"var(--r2)",overflow:"hidden",marginBottom:16}}>
+                <div style={{background:"var(--ln2)",padding:"8px 14px",fontSize:10.5,fontWeight:800,color:"var(--i3)",textTransform:"uppercase",letterSpacing:".06em"}}>Rincian Biaya</div>
+                {trx.categories.map((c,i)=>(
+                  <div key={i} style={{display:"flex",justifyContent:"space-between",padding:"9px 14px",borderBottom:i<trx.categories.length-1?"1px solid var(--ln)":"none",fontSize:13}}>
+                    <span>{c.cat}</span><span className="bold">{rp(c.amt)}</span>
+                  </div>
+                ))}
+                <div style={{display:"flex",justifyContent:"space-between",padding:"11px 14px",background:"var(--tlb)",borderTop:"2px solid var(--tl)"}}>
+                  <span style={{fontWeight:800,color:"var(--tl)"}}>TOTAL</span>
+                  <span style={{fontWeight:800,fontSize:16,color:"var(--tl)"}}>{rp(trx.amount)}</span>
+                </div>
+              </div>
+
+              {trx.notes&&<div className="al at mb4"><Ic n="bell" s={13} c="var(--tl)"/><span>{trx.notes}</span></div>}
+
+              <p style={{fontSize:10.5,fontWeight:800,color:"var(--i3)",textTransform:"uppercase",letterSpacing:".08em",marginBottom:10}}>Progress</p>
+              <div>{tl.map((t,i)=>(
+                <div key={i} className="tlr">
+                  <div className="tldc"><div className="tld" style={{background:t.ok?t.col:"var(--ln)"}}><Ic n={t.icon} s={12} c={t.ok?"#fff":"var(--i4)"}/></div>{i<tl.length-1&&<div className="tlln"/>}</div>
+                  <div className="tlb"><div className="tlt" style={{color:t.ok?"var(--ink)":"var(--i4)"}}>{t.title}</div><div className="tls">{t.sub}</div></div>
+                </div>
+              ))}</div>
+
+              {isApp&&trx.status==="pending"&&(
+                <div style={{marginTop:16,padding:14,background:"var(--ln2)",borderRadius:"var(--r2)",border:"1px solid var(--ln)"}}>
+                  <p style={{fontSize:13,fontWeight:700,marginBottom:9}}>Tindakan Approval</p>
+                  <textarea value={note} onChange={e=>setNote(e.target.value)} placeholder="Catatan (opsional)..." rows={2} style={{marginBottom:9}}/>
+                  <div style={{display:"flex",gap:8}}>
+                    <button className="btn bg" onClick={()=>act("approve",note||"Disetujui")} disabled={busy}>{busy?<span className="sp2"/>:<Ic n="check" s={13}/>}Setujui</button>
+                    <button className="btn br2" onClick={()=>act("reject",note||"Ditolak")} disabled={busy}><Ic n="x" s={13}/>Tolak</button>
+                  </div>
+                </div>
+              )}
+              {isFin&&trx.status==="approved"&&(
+                <div style={{marginTop:16,padding:14,background:"var(--ln2)",borderRadius:"var(--r2)",border:"1px solid var(--ln)"}}>
+                  <p style={{fontSize:13,fontWeight:700,marginBottom:9}}>Mulai Proses</p>
+                  <textarea value={note} onChange={e=>setNote(e.target.value)} placeholder="Catatan Finance..." rows={2} style={{marginBottom:9}}/>
+                  <button className="btn bp" onClick={()=>act("process",note)} disabled={busy}>{busy?<span className="sp2"/>:<Ic n="money" s={13}/>}Mulai Proses</button>
+                </div>
+              )}
+              {isFin&&trx.status==="processing"&&(
+                <div style={{marginTop:16,padding:14,background:"var(--ln2)",borderRadius:"var(--r2)",border:"1px solid var(--ln)"}}>
+                  <p style={{fontSize:13,fontWeight:700,marginBottom:9}}>Konfirmasi Pembayaran</p>
+                  <textarea value={note} onChange={e=>setNote(e.target.value)} placeholder="No. referensi transfer..." rows={2} style={{marginBottom:9}}/>
+                  <button className="btn bg" onClick={()=>act("pay",note)} disabled={busy}>{busy?<span className="sp2"/>:<Ic n="check" s={13}/>}Tandai Sudah Dibayar</button>
+                </div>
+              )}
+              {isFin&&trx.status==="paid"&&trx.type==="cash_advance"&&!trx.settled&&(
+                <div style={{marginTop:16,padding:14,background:"var(--amb)",borderRadius:"var(--r2)",border:"1px solid var(--ambd)"}}>
+                  <p style={{fontSize:13,fontWeight:700,marginBottom:4,color:"#78350f"}}>⚠️ CA Belum Diselesaikan</p>
+                  <textarea value={note} onChange={e=>setNote(e.target.value)} placeholder="Catatan settlement..." rows={2} style={{marginBottom:9}}/>
+                  <button className="btn bg" onClick={settle} disabled={busy}>{busy?<span className="sp2"/>:<Ic n="check" s={13}/>}Konfirmasi Settlement</button>
+                </div>
+              )}
+            </>
           )}
         </div>
       </div>
@@ -826,6 +1094,11 @@ export default function App() {
     const msgs = {approve:"✓ Pengajuan disetujui",reject:"Pengajuan ditolak",process:"✓ Mulai diproses",pay:"✓ Pembayaran dikonfirmasi",settle:"✓ CA settlement dikonfirmasi"};
     showToast(msgs[action]||"Berhasil");
     setSelId(null);
+  };
+
+  const handleEdit = (updated) => {
+    setData(prev => prev.map(d => d.id===updated.id ? updated : d));
+    showToast("✓ Perubahan disimpan");
   };
 
   const handleSubmit = (entry) => { setData(p=>[entry,...p]); showToast(`✓ ${entry.id} berhasil dikirim`); setPage("list"); };
@@ -935,7 +1208,7 @@ export default function App() {
         </div>
       </div>
 
-      {sel && <DetailModal trx={sel} user={user} onClose={()=>setSelId(null)} onAction={handleAction}/>}
+      {sel && <DetailModal trx={sel} user={user} onClose={()=>setSelId(null)} onAction={handleAction} onEdit={handleEdit}/>}
       {toast && <div className="toast" style={{background:toast.type==="err"?"var(--rd)":"var(--ink)"}}><Ic n={toast.type==="err"?"x":"check"} s={13}/>{toast.msg}</div>}
     </>
   );
