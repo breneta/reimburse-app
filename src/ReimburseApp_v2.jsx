@@ -66,12 +66,16 @@ const API = {
   async post(action, extra={}) {
     if (!CONFIG.SCRIPT_URL) return null;
     try {
+      const body = JSON.stringify({ action, ...extra });
       const r = await fetch(CONFIG.SCRIPT_URL, {
-        method:"POST", headers:{"Content-Type":"application/json"},
-        body: JSON.stringify({ action, ...extra }),
+        method:"POST",
+        redirect:"follow",
+        body,
       });
-      return await r.json();
-    } catch { return null; }
+      const txt = await r.text();
+      try { return JSON.parse(txt); }
+      catch { console.error("Apps Script response:", txt); return null; }
+    } catch(e) { console.error("fetch error:", e); return null; }
   },
   getAll:      ()       => API.post("getAll"),
   create:      (data)   => API.post("create",       { data }),
@@ -345,7 +349,8 @@ function LoginScreen({ onLogin }) {
       // Sheets mode: ignore localStorage sepenuhnya
       const res = await API.registerAcc(newAcc);
       setBusy2(false);
-      if (!res?.ok) return setErr(res?.error || "Username sudah dipakai, pilih yang lain");
+      if (!res) return setErr("Tidak bisa terhubung ke server. Cek koneksi atau Apps Script.");
+      if (!res.ok) return setErr(res.error || "Username sudah dipakai, pilih yang lain");
     } else {
       // localStorage fallback (offline mode)
       const accounts = lsGet2();
@@ -367,7 +372,8 @@ function LoginScreen({ onLogin }) {
       // Sheets mode: ignore localStorage sepenuhnya
       const res = await API.loginAcc(ukey, pass);
       setBusy2(false);
-      if (!res?.ok) return setErr(res?.error || "Username atau password salah");
+      if (!res) return setErr("Tidak bisa terhubung ke server. Cek koneksi atau Apps Script.");
+      if (!res.ok) return setErr(res.error || "Username atau password salah");
       const name = res.name || res.acc?.name || ukey;
       const dept = res.dept || res.acc?.dept || "-";
       const av2  = name.split(" ").map(w=>w[0]).join("").toUpperCase().slice(0,2);
