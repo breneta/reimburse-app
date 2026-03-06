@@ -288,6 +288,19 @@ const LS_KEY2  = "reimburse_accounts_v3";
 const lsGet2   = () => { try { return JSON.parse(localStorage.getItem(LS_KEY2)||"{}"); } catch { return {}; } };
 const lsSave2  = (a) => { try { localStorage.setItem(LS_KEY2, JSON.stringify(a)); } catch {} };
 
+const PwInput = ({ value, onChange, placeholder, showState, toggleShow, onEnter }) => (
+  <div style={{position:"relative"}}>
+    <input type={showState?"text":"password"} value={value}
+      onChange={e=>onChange(e.target.value)}
+      placeholder={placeholder}
+      onKeyDown={e=>e.key==="Enter"&&onEnter&&onEnter()}
+      style={{paddingRight:42}}/>
+    <button onClick={e=>{e.preventDefault();toggleShow();}} style={{position:"absolute",right:10,top:"50%",transform:"translateY(-50%)",background:"none",border:"none",cursor:"pointer",fontSize:16,color:"var(--i3)"}}>
+      {showState?"🙈":"👁️"}
+    </button>
+  </div>
+);
+
 // ═══════════════════════════════════════════════════════════════
 // LOGIN SCREEN
 // ═══════════════════════════════════════════════════════════════
@@ -377,18 +390,7 @@ function LoginScreen({ onLogin }) {
     onLogin({ ...info, role });
   };
 
-  const PwInput = ({ value, onChange, placeholder, showState, toggleShow, onEnter }) => (
-    <div style={{position:"relative"}}>
-      <input type={showState?"text":"password"} value={value}
-        onChange={e=>{onChange(e.target.value);clr();}}
-        placeholder={placeholder}
-        onKeyDown={e=>e.key==="Enter"&&onEnter&&onEnter()}
-        style={{paddingRight:42}}/>
-      <button onClick={toggleShow} style={{position:"absolute",right:10,top:"50%",transform:"translateY(-50%)",background:"none",border:"none",cursor:"pointer",fontSize:16,color:"var(--i3)"}}>
-        {showState?"🙈":"👁️"}
-      </button>
-    </div>
-  );
+  // PwInput moved to module scope
 
   return (
     <div className="lw">
@@ -424,7 +426,7 @@ function LoginScreen({ onLogin }) {
             </div>
             <div className="l-fld">
               <label>Password</label>
-              <PwInput value={pass} onChange={setPass} placeholder="Password kamu"
+              <PwInput value={pass} onChange={v=>{setPass(v);clr();}} placeholder="Password kamu"
                 showState={show} toggleShow={()=>setShow(s=>!s)} onEnter={doLogin}/>
             </div>
             <button className="l-btn" onClick={doLogin} disabled={busy2}>{busy2?<span className="sp2"/>:"Masuk →"}</button>
@@ -460,12 +462,12 @@ function LoginScreen({ onLogin }) {
             </div>
             <div className="l-fld">
               <label>Password <span style={{color:"var(--rd)"}}>*</span></label>
-              <PwInput value={regPass} onChange={setRegPass} placeholder="Min. 4 karakter"
+              <PwInput value={regPass} onChange={v=>{setRegPass(v);clr();}} placeholder="Min. 4 karakter"
                 showState={show} toggleShow={()=>setShow(s=>!s)}/>
             </div>
             <div className="l-fld">
               <label>Konfirmasi Password <span style={{color:"var(--rd)"}}>*</span></label>
-              <PwInput value={regPass2} onChange={setRegPass2} placeholder="Ulangi password"
+              <PwInput value={regPass2} onChange={v=>{setRegPass2(v);clr();}} placeholder="Ulangi password"
                 showState={show2} toggleShow={()=>setShow2(s=>!s)} onEnter={doRegister}/>
             </div>
             <button className="l-btn" onClick={doRegister} disabled={busy2}>{busy2?<span className="sp2"/>:"Daftar & Masuk →"}</button>
@@ -490,7 +492,7 @@ function LoginScreen({ onLogin }) {
             </div>
             <div className="l-fld">
               <label>Password <span style={{color:"var(--rd)"}}>*</span></label>
-              <PwInput value={staffPass} onChange={setStaffPass} placeholder="Masukkan password"
+              <PwInput value={staffPass} onChange={v=>{setStaffPass(v);clr();}} placeholder="Masukkan password"
                 showState={show} toggleShow={()=>setShow(s=>!s)} onEnter={doStaff}/>
             </div>
             <button className="l-btn" onClick={doStaff}>Masuk →</button>
