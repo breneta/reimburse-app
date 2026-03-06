@@ -28,15 +28,9 @@ const STATUS = {
   rejected:   { label:"Ditolak",           color:"#991b1b", bg:"#fef2f2", dot:"#ef4444" },
   overdue:    { label:"CA Terlambat ⚠️",  color:"#9f1239", bg:"#fff1f2", dot:"#e11d48" },
 };
-const DEMO = [
-  { id:"TRX-001", type:"cash_advance", submitter:"Budi Santoso", dept:"Marketing", purpose:"Meeting klien Surabaya", destination:"Surabaya", dateStart:"2026-03-01", dateEnd:"2026-03-03", amount:3500000, status:"paid", submitted:"2026-02-25", categories:[{cat:"Perjalanan Dinas",amt:1500000},{cat:"Akomodasi / Hotel",amt:1200000},{cat:"Uang Saku",amt:800000}], notes:"", settled:true, settledDate:"2026-03-08", approverName:"Sari Dewi", financeNote:"Sudah transfer" },
-  { id:"TRX-002", type:"reimburse", submitter:"Budi Santoso", dept:"Marketing", purpose:"Promosi event Jakarta", destination:"Jakarta", dateStart:"2026-03-05", dateEnd:"2026-03-05", amount:850000, status:"processing", submitted:"2026-03-06", categories:[{cat:"Transportasi",amt:350000},{cat:"Makan & Entertainment",amt:500000}], notes:"", settled:false, settledDate:null, approverName:"Sari Dewi", financeNote:"" },
-  { id:"TRX-003", type:"cash_advance", submitter:"Andi Pratama", dept:"Sales Dealer", purpose:"Kunjungan dealer Bandung", destination:"Bandung", dateStart:"2026-02-20", dateEnd:"2026-02-21", amount:2000000, status:"overdue", submitted:"2026-02-18", categories:[{cat:"Perjalanan Dinas",amt:800000},{cat:"Akomodasi / Hotel",amt:700000},{cat:"Lain-lain",amt:500000}], notes:"", settled:false, settledDate:null, approverName:"Sari Dewi", financeNote:"" },
-  { id:"TRX-004", type:"reimburse", submitter:"Citra Lestari", dept:"Collection", purpose:"Penagihan lapangan Bekasi", destination:"Bekasi", dateStart:"2026-03-08", dateEnd:"2026-03-08", amount:275000, status:"pending", submitted:"2026-03-09", categories:[{cat:"Transportasi",amt:175000},{cat:"Komunikasi",amt:100000}], notes:"", settled:false, settledDate:null, approverName:"Sari Dewi", financeNote:"" },
-  { id:"TRX-005", type:"cash_advance", submitter:"Dewi Rahayu", dept:"IT", purpose:"Training vendor software", destination:"Jakarta", dateStart:"2026-03-15", dateEnd:"2026-03-17", amount:4200000, status:"approved", submitted:"2026-03-10", categories:[{cat:"Perjalanan Dinas",amt:1000000},{cat:"Akomodasi / Hotel",amt:2100000},{cat:"Makan & Entertainment",amt:1100000}], notes:"", settled:false, settledDate:null, approverName:"Sari Dewi", financeNote:"" },
-];
+const DEMO = [];
 
-let _n = 6;
+let _n = 1;
 const gid   = () => `TRX-${String(_n++).padStart(3,"0")}`;
 const rp    = n  => "Rp " + new Intl.NumberFormat("id-ID").format(n||0);
 const fd    = d  => d ? new Date(d).toLocaleDateString("id-ID",{day:"2-digit",month:"short",year:"numeric"}) : "–";
@@ -501,7 +495,8 @@ function LoginScreen({ onLogin }) {
             <button className="l-btn" onClick={doStaff}>Masuk →</button>
             <div className="l-note">
               🔑 Password default: <strong>approver123</strong> / <strong>finance123</strong><br/>
-              Ganti di menu <strong>Pengaturan</strong> (login Finance).
+              Ganti di menu <strong>Pengaturan</strong> (login Finance).<br/><br/>
+              🔒 <strong>Lupa password karyawan?</strong> Hubungi Finance untuk reset akun di Google Sheets tab <em>Accounts</em>.
             </div>
           </>
         )}
