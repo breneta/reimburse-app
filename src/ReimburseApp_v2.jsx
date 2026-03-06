@@ -3,13 +3,16 @@ import { useState } from "react";
 // ═══════════════════════════════════════════════════════════════
 // ⚙️  KONFIGURASI — GANTI SESUAI KEBUTUHAN
 // ═══════════════════════════════════════════════════════════════
-const CONFIG = {
-  // Paste URL Apps Script di sini (lihat panduan Sheets)
-  SCRIPT_URL: "",
+// ── Persist CONFIG ke localStorage ──────────────────────────
+const LS_CONFIG = "reimburse_config_v3";
+const _loadConfig = () => { try { return JSON.parse(localStorage.getItem(LS_CONFIG)||"{}"); } catch { return {}; } };
+const _saveConfig = (obj) => { try { localStorage.setItem(LS_CONFIG, JSON.stringify(obj)); } catch {} };
+const _cfg = _loadConfig();
 
-  // Password login — GANTI sebelum dibagikan ke tim!
-  PASS_APPROVER: "approver123",
-  PASS_FINANCE:  "finance123",
+const CONFIG = {
+  SCRIPT_URL:    _cfg.SCRIPT_URL    || "",
+  PASS_APPROVER: _cfg.PASS_APPROVER || "approver123",
+  PASS_FINANCE:  _cfg.PASS_FINANCE  || "finance123",
 };
 
 // ═══════════════════════════════════════════════════════════════
@@ -826,6 +829,7 @@ function SettingsPage({ onSave }) {
     CONFIG.SCRIPT_URL     = url.trim();
     CONFIG.PASS_APPROVER  = pa;
     CONFIG.PASS_FINANCE   = pf;
+    _saveConfig({ SCRIPT_URL: url.trim(), PASS_APPROVER: pa, PASS_FINANCE: pf });
     setSaved(true); setTimeout(()=>setSaved(false),2500);
     if (onSave) onSave();
   };
@@ -842,7 +846,7 @@ function SettingsPage({ onSave }) {
           </div>
           <div style={{padding:"10px 13px",background:"var(--ln2)",borderRadius:"var(--r2)",border:"1px solid var(--ln)"}}>
             <p style={{fontSize:11,fontWeight:700,color:"var(--i3)",marginBottom:3}}>STATUS</p>
-            {CONFIG.SCRIPT_URL
+            {url.trim()
               ? <span style={{color:"var(--gn)",fontWeight:700,fontSize:13}}>✓ Terhubung ke Google Sheets — data tersimpan otomatis</span>
               : <span style={{color:"var(--am)",fontWeight:700,fontSize:13}}>⚠️ Belum terhubung — data hanya tersimpan sementara (hilang saat refresh)</span>
             }
