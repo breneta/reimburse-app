@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 
 // ═══════════════════════════════════════════════════════════════
 // ⚙️  KONFIGURASI — GANTI SESUAI KEBUTUHAN
@@ -61,10 +61,6 @@ const API = {
   editData:    (id,d)   => API.post("editData",     { id, data:d }),
 };
 
-// ── Local account fallback (when Sheets not configured) ───────
-const LS_KEY = "reimburse_accounts_v3";
-const lsGet  = () => { try { return JSON.parse(localStorage.getItem(LS_KEY)||"{}"); } catch { return {}; } };
-const lsSave = (a) => { try { localStorage.setItem(LS_KEY, JSON.stringify(a)); } catch {} };
 
 // ═══════════════════════════════════════════════════════════════
 // STYLES
