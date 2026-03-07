@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 
 // ═══════════════════════════════════════════════════════════════
 // ⚙️  KONFIGURASI — GANTI SESUAI KEBUTUHAN
@@ -683,7 +683,7 @@ function SubmitPage({ user, onSubmit, data }) {
             <span style={{fontWeight:800,fontSize:16,color:"var(--tl)"}}>{rp(total)}</span>
           </div>}
         </div>
-        <div className="fs mb4"><div className="fst">Nama Atasan <span style={{color:"var(--rd)"}}>*</span></div><input value={f.approverName} onChange={e=>set("approverName",e.target.value)} placeholder="Nama lengkap atasan langsung"/></div>
+        <div className="fs mb4"><div className="fst">Nama Admin <span style={{color:"var(--rd)"}}>*</span></div><input value={f.approverName} onChange={e=>set("approverName",e.target.value)} placeholder="Nama Admin yang menerima dokumen fisik"/></div>
         <div className="fs mb4"><div className="fst">Catatan (Opsional)</div><textarea value={f.notes} onChange={e=>set("notes",e.target.value)} placeholder="Catatan untuk Finance..." rows={2}/></div>
         <div style={{display:"flex",justifyContent:"flex-end",gap:9}}>
           <button className="btn bo" onClick={()=>setF({type:"reimburse",purpose:"",destination:"Jakarta",dateStart:"",dateEnd:"",approverName:"",notes:"",items:[{cat:"Perjalanan Dinas",amt:""}]})}>Reset</button>
@@ -743,7 +743,7 @@ function ApprovalPage({ data, onAction, onSel, user }) {
   const allPending = data.filter(d=>d.status==="pending");
   const queue = allPending.filter(d => {
     const matchSearch = !search || d.submitter.toLowerCase().includes(search.toLowerCase()) || d.dept.toLowerCase().includes(search.toLowerCase());
-    const matchMine   = !filterMine || d.approverName.toLowerCase() === user.name.toLowerCase();
+    const matchMine   = !filterMine || (d.approverName||'').toLowerCase() === user.name.toLowerCase();
     return matchSearch && matchMine;
   });
   return (
@@ -1044,7 +1044,7 @@ function EditForm({ trx, user, onSave, onCancel }) {
 
       {/* Atasan & catatan */}
       <div className="fg fg2 mb3">
-        <div className="fs"><div className="fst">Nama Atasan *</div><input value={f.approverName} onChange={e=>set("approverName",e.target.value)}/></div>
+        <div className="fs"><div className="fst">Nama Admin *</div><input value={f.approverName} onChange={e=>set("approverName",e.target.value)}/></div>
         <div className="fs"><div className="fst">Catatan</div><textarea value={f.notes} onChange={e=>set("notes",e.target.value)} rows={2}/></div>
       </div>
 
@@ -1070,14 +1070,18 @@ function DetailModal({ trx, user, onClose, onAction, onEdit }) {
 
   const act = async (action, n) => {
     setBusy(true);
-    const sm = {approve:"approved",reject:"rejected",process:"processing",pay:"paid"};
-    if (CONFIG.SCRIPT_URL) await API.update(trx.id, sm[action], n);
-    else await new Promise(r=>setTimeout(r,400));
-    setBusy(false); onAction(trx.id, action, n);
+    const sm = {approve:"approved",reject:"rejected",process:"processing",pay:"awaiting_oer"};
+    if (CONFIG.SCRIPT_URL) {
+      await API.update(trx.id, sm[action]||action, n);
+    } else {
+      await new Promise(r=>setTimeout(r,400));
+    }
+    setBusy(false);
+    onAction(trx.id, action, n);
   };
   const settle = async () => {
     setBusy(true);
-    if (CONFIG.SCRIPT_URL) await API.settle(trx.id, note);
+    if (CONFIG.SCRIPT_URL) await API.update(trx.id, "settled", note);
     else await new Promise(r=>setTimeout(r,400));
     setBusy(false); onAction(trx.id, "settle", note);
   };
@@ -1105,7 +1109,7 @@ function DetailModal({ trx, user, onClose, onAction, onEdit }) {
 
   const tl = [
     {ok:true,  icon:"send",  title:"Pengajuan Dikirim",  sub:`${trx.submitter} · ${fd(trx.submitted)}`, col:"var(--tl)"},
-    {ok:!["pending"].includes(trx.status), icon:"user", title:"Approval Atasan", sub:trx.status==="pending"?"Menunggu…":trx.approverName, col:trx.status==="pending"?"var(--am)":"var(--gn)"},
+    {ok:!["pending"].includes(trx.status), icon:"user", title:"Approval Admin", sub:trx.status==="pending"?"Menunggu…":trx.approverName, col:trx.status==="pending"?"var(--am)":"var(--gn)"},
     {ok:["processing","paid"].includes(trx.status), icon:"money", title:"Diproses Finance", sub:trx.status==="processing"?"Sedang diproses…":trx.status==="paid"?"Selesai":"Belum", col:trx.status==="paid"?"var(--gn)":"var(--i4)"},
     {ok:trx.status==="paid", icon:"check", title:"Pembayaran", sub:trx.status==="paid"?`Dibayar · ${fd(trx.settledDate)}`:"Menunggu", col:trx.status==="paid"?"var(--gn)":"var(--i4)"},
   ];
@@ -1150,7 +1154,7 @@ function DetailModal({ trx, user, onClose, onAction, onEdit }) {
                 <div>
                   <p style={{fontSize:10.5,fontWeight:800,color:"var(--i3)",textTransform:"uppercase",letterSpacing:".06em",marginBottom:7}}>Pemohon</p>
                   <p className="bold">{trx.submitter}</p><p style={{fontSize:12,color:"var(--i3)"}}>{trx.dept}</p>
-                  <p style={{fontSize:12,color:"var(--i3)",marginTop:4}}>Atasan: {trx.approverName}</p>
+                  <p style={{fontSize:12,color:"var(--i3)",marginTop:4}}>Admin: {trx.approverName}</p>
                 </div>
                 <div>
                   <p style={{fontSize:10.5,fontWeight:800,color:"var(--i3)",textTransform:"uppercase",letterSpacing:".06em",marginBottom:7}}>Perjalanan</p>
@@ -1362,7 +1366,29 @@ export default function App() {
 
   const showToast = (msg, type="ok") => { setToast({msg,type}); setTimeout(()=>setToast(null),3000); };
 
+  const reloadData = async () => {
+    if (!CONFIG.SCRIPT_URL) return;
+    const res = await API.getAll();
+    if (res?.data?.length) setData(res.data.map(d=>isOverdue(d)?{...d,status:"overdue"}:d));
+  };
+
+  // Auto-reload saat user balik ke browser tab / buka app lagi dari background
+  useEffect(() => {
+    if (!CONFIG.SCRIPT_URL) return;
+    const onVisible = () => { if (document.visibilityState === "visible") reloadData(); };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+  }, []);
+
+  // Polling setiap 30 detik — semua user dapat data terbaru tanpa harus refresh manual
+  useEffect(() => {
+    if (!CONFIG.SCRIPT_URL) return;
+    const timer = setInterval(reloadData, 30000);
+    return () => clearInterval(timer);
+  }, []);
+
   const handleAction = (id, action, noteOrData) => {
+    // Optimistic update dulu — UI langsung berubah tanpa tunggu Sheets
     setData(prev=>prev.map(d=>{
       if (d.id!==id) return d;
       if (action==="oer_submitted") {
@@ -1375,7 +1401,7 @@ export default function App() {
         approve:  {status:"approved"},
         reject:   {status:"rejected",   financeNote:noteOrData},
         process:  {status:"processing", financeNote:noteOrData},
-        pay:      {status:"awaiting_oer",settledDate:today(), financeNote:noteOrData},
+        pay:      {status:"awaiting_oer", settledDate:today(), financeNote:noteOrData},
         settle:   {settled:true, status:"settled", settledDate:today(), financeNote:noteOrData},
       };
       return {...d, ...m[action]};
@@ -1388,6 +1414,8 @@ export default function App() {
     };
     showToast(msgs[action]||"Berhasil");
     setSelId(null);
+    // Sync dari Sheets 1.5 detik setelah aksi — pastikan data konsisten
+    if (CONFIG.SCRIPT_URL) setTimeout(reloadData, 1500);
   };
 
   const handleEdit = (updated) => {
