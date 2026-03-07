@@ -30,6 +30,9 @@ const STATUS = {
   awaiting_oer:      { label:"Menunggu OER",          color:"#854d0e", bg:"#fef9c3", dot:"#ca8a04" },
   kurang_bayar:      { label:"Kurang Bayar ↑",        color:"#1e3a5f", bg:"#dbeafe", dot:"#3b82f6" },
   lebih_bayar:       { label:"Lebih Bayar ↓",         color:"#4c1d95", bg:"#ede9fe", dot:"#8b5cf6" },
+  awaiting_confirm:  { label:"Menunggu Konfirmasi",   color:"#92400e", bg:"#fff7ed", dot:"#f97316" },
+  employee_confirmed:{ label:"Karyawan Setuju ✓",     color:"#065f46", bg:"#ecfdf5", dot:"#10b981" },
+  disputed:          { label:"Keberatan",             color:"#991b1b", bg:"#fef2f2", dot:"#ef4444" },
   settled:           { label:"Lunas ✓",               color:"#065f46", bg:"#ecfdf5", dot:"#10b981" },
   rejected:          { label:"Ditolak",               color:"#991b1b", bg:"#fef2f2", dot:"#ef4444" },
   overdue:           { label:"CA Terlambat ⚠️",      color:"#9f1239", bg:"#fff1f2", dot:"#e11d48" },
@@ -177,6 +180,30 @@ const SB = {
     });
   },
 
+  async updateOer(id, oerCategories, oerNote, caAmount) {
+    const oerAmount = oerCategories.reduce((s,it)=>s+(it.amt||0),0);
+    const selisih   = oerAmount - caAmount;
+    const newStatus = selisih > 0 ? "kurang_bayar" : selisih < 0 ? "lebih_bayar" : "settled";
+    return SB.update(id, {
+      oer_amount: oerAmount,
+      oer_categories: oerCategories,
+      oer_note: oerNote||"",
+      status: newStatus,
+    });
+  },
+
+  async sendForConfirmation(id) {
+    return SB.update(id, { status: "awaiting_confirm" });
+  },
+
+  async employeeConfirm(id) {
+    return SB.update(id, { status: "employee_confirmed" });
+  },
+
+  async employeeDispute(id, reason) {
+    return SB.update(id, { status: "disputed", finance_note: reason||"Karyawan keberatan" });
+  },
+
   async editData(id, d) {
     const patch = {};
     if (d.purpose)     patch.purpose     = d.purpose;
@@ -222,7 +249,11 @@ const API = {
   submitOer:   (id,d,ca)=> SB.submitOer(id,d,ca),
   registerAcc: (acc)    => SB.registerAcc(acc),
   loginAcc:    (u,p)    => SB.loginAcc(u,p),
-  editData:    (id,d)   => SB.editData(id,d),
+  editData:    (id,d)       => SB.editData(id,d),
+  updateOer:   (id,cats,note,ca) => SB.updateOer(id,cats,note,ca),
+  sendConfirm: (id)          => SB.sendForConfirmation(id),
+  empConfirm:  (id)          => SB.employeeConfirm(id),
+  empDispute:  (id,r)        => SB.employeeDispute(id,r),
 };
 
 
@@ -1271,6 +1302,183 @@ function EditForm({ trx, user, onSave, onCancel }) {
   );
 }
 
+
+// ═══════════════════════════════════════════════════════════════
+// OER RECON BOX — Finance edit OER + Konfirmasi karyawan
+// ═══════════════════════════════════════════════════════════════
+function OerReconBox({ trx, rc, isFin, isOwner, onAction }) {
+  const [editMode, setEditMode]   = useState(false);
+  const [items, setItems]         = useState(
+    OER_CATS.map(cat => {
+      const existing = (trx.oerCategories||[]).find(x=>x.cat===cat);
+      return { cat, amt: existing ? String(existing.amt) : "" };
+    })
+  );
+  const [oerNote, setOerNote]     = useState(trx.oerNote||"");
+
+  const editTotal = items.reduce((s,it)=>s+(parseFloat(it.amt)||0),0);
+  const setAmt = (i,v) => setItems(prev=>{const n=[...prev];n[i]={...n[i],amt:v};return n;});
+  const editRc = editMode ? (() => {
+    const selisih = editTotal - trx.amount;
+    return { ca:trx.amount, oer:editTotal, selisih, isKurang:selisih>0, isLebih:selisih<0, isLunas:selisih===0 };
+  })() : rc;
+
+  const saveEditedOer = () => {
+    const cats = items.filter(it=>parseFloat(it.amt)>0).map(it=>({cat:it.cat,amt:parseFloat(it.amt)}));
+    onAction(trx.id, "edit_oer", { oerCategories:cats, oerNote, caAmount:trx.amount });
+    if (isReady()) API.updateOer(trx.id, cats, oerNote, trx.amount).catch(()=>{});
+    setEditMode(false);
+  };
+
+  const sendForConfirmation = () => {
+    onAction(trx.id, "send_confirm", {});
+    if (isReady()) API.sendConfirm(trx.id).catch(()=>{});
+  };
+
+  const confirmOer = () => {
+    onAction(trx.id, "emp_confirm", {});
+    if (isReady()) API.empConfirm(trx.id).catch(()=>{});
+  };
+
+
+  const colH  = editRc.isKurang?"#1e3a8a":editRc.isLebih?"#4c1d95":"#065f46";
+  const bgH   = editRc.isKurang?"#dbeafe":editRc.isLebih?"#ede9fe":"#ecfdf5";
+  const bdH   = editRc.isKurang?"#93c5fd":editRc.isLebih?"#c4b5fd":"#6ee7b7";
+  const colV  = editRc.isKurang?"#1e40af":editRc.isLebih?"#7c3aed":"#059669";
+
+  return (
+    <div style={{marginBottom:16,border:"2px solid",borderColor:bdH,borderRadius:"var(--r2)",overflow:"hidden"}}>
+      {/* Header */}
+      <div style={{padding:"9px 14px",background:bgH,fontWeight:800,fontSize:12,color:colH,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+        <span>📊 Rekonsiliasi CA vs OER</span>
+        <div style={{display:"flex",gap:6,alignItems:"center"}}>
+          {editRc.isKurang&&<span style={{background:"#1e40af",color:"white",padding:"2px 10px",borderRadius:20,fontSize:11}}>KURANG BAYAR</span>}
+          {editRc.isLebih&&<span style={{background:"#7c3aed",color:"white",padding:"2px 10px",borderRadius:20,fontSize:11}}>LEBIH BAYAR</span>}
+          {editRc.isLunas&&<span style={{background:"#059669",color:"white",padding:"2px 10px",borderRadius:20,fontSize:11}}>LUNAS</span>}
+          {/* Finance: tombol edit OER — hanya kalau belum settled & belum awaiting/confirmed */}
+          {isFin && !trx.settled && !["awaiting_confirm","employee_confirmed","settled"].includes(trx.status) && (
+            <button className="btn bo sm" onClick={()=>setEditMode(v=>!v)} style={{fontSize:10,padding:"2px 8px"}}>
+              {editMode ? "Batal" : "✏️ Edit OER"}
+            </button>
+          )}
+        </div>
+      </div>
+
+      <div style={{padding:"12px 14px"}}>
+        {/* Edit mode — tampilkan input per kategori */}
+        {editMode && isFin ? (
+          <>
+            <div style={{marginBottom:10,borderRadius:"var(--r3)",overflow:"hidden",border:"1px solid var(--ln)"}}>
+              <div style={{padding:"6px 12px",background:"var(--ln2)",fontSize:10.5,fontWeight:800,color:"var(--i3)",textTransform:"uppercase"}}>Edit Rincian OER</div>
+              {items.map((it,i)=>(
+                <div key={i} style={{display:"flex",alignItems:"center",padding:"7px 12px",borderBottom:i<items.length-1?"1px solid var(--ln)":"none",gap:10}}>
+                  <span style={{flex:2,fontSize:12,color:"var(--i2)"}}>{it.cat}</span>
+                  <input type="number" value={it.amt} onChange={e=>setAmt(i,e.target.value)} placeholder="0" min="0"
+                    style={{flex:1,padding:"5px 8px",border:"1px solid var(--ln)",borderRadius:6,fontSize:12,textAlign:"right"}}/>
+                </div>
+              ))}
+              <div style={{display:"flex",justifyContent:"space-between",padding:"10px 12px",background:bgH,borderTop:"2px solid "+bdH}}>
+                <span style={{fontWeight:800,color:colH}}>Total OER</span>
+                <span style={{fontWeight:800,fontSize:15,color:colH}}>{rp(editTotal)}</span>
+              </div>
+            </div>
+            <textarea value={oerNote} onChange={e=>setOerNote(e.target.value)} placeholder="Catatan koreksi OER..." rows={2} style={{marginBottom:9}}/>
+            {/* Preview rekonsiliasi setelah edit */}
+            {editTotal>0&&(
+              <div style={{padding:"10px 12px",marginBottom:10,borderRadius:"var(--r3)",border:"1px solid "+bdH,background:bgH}}>
+                <div style={{display:"flex",justifyContent:"space-between",fontSize:12,marginBottom:3}}>
+                  <span>CA Dicairkan</span><span style={{fontWeight:700}}>{rp(trx.amount)}</span>
+                </div>
+                <div style={{display:"flex",justifyContent:"space-between",fontSize:12,marginBottom:4}}>
+                  <span>Total OER (dikoreksi)</span><span style={{fontWeight:700}}>{rp(editTotal)}</span>
+                </div>
+                <div style={{height:1,background:bdH,margin:"6px 0"}}/>
+                <div style={{display:"flex",justifyContent:"space-between",fontSize:14,fontWeight:800,color:colV}}>
+                  <span>{editRc.isKurang?"Perusahaan bayar ke karyawan":editRc.isLebih?"Karyawan kembalikan":"Lunas pas ✓"}</span>
+                  <span>{rp(Math.abs(editRc.selisih))}</span>
+                </div>
+              </div>
+            )}
+            <div style={{display:"flex",gap:8}}>
+              <button className="btn bg" onClick={saveEditedOer} disabled={editTotal===0}><Ic n="check" s={13}/>Simpan Koreksi</button>
+              <button className="btn bo" onClick={()=>setEditMode(false)}>Batal</button>
+            </div>
+          </>
+        ) : (
+          <>
+            {/* View mode — tampilkan summary */}
+            <div style={{display:"flex",justifyContent:"space-between",marginBottom:6,fontSize:13}}>
+              <span style={{color:"var(--i3)"}}>CA Dicairkan</span>
+              <span style={{fontWeight:700}}>{rp(rc.ca)}</span>
+            </div>
+            <div style={{display:"flex",justifyContent:"space-between",marginBottom:6,fontSize:13}}>
+              <span style={{color:"var(--i3)"}}>Total Biaya OER</span>
+              <span style={{fontWeight:700}}>{rp(rc.oer)}</span>
+            </div>
+            <div style={{height:1,background:"var(--ln)",margin:"8px 0"}}/>
+            <div style={{display:"flex",justifyContent:"space-between",fontSize:14}}>
+              <span style={{fontWeight:800,color:colV}}>
+                {rc.isKurang?"Perusahaan bayar ke karyawan":rc.isLebih?"Karyawan kembalikan ke perusahaan":"Selisih"}
+              </span>
+              <span style={{fontWeight:800,fontSize:16,color:colV}}>{rp(Math.abs(rc.selisih))}</span>
+            </div>
+            {trx.financeNote&&trx.settled&&(
+              <div style={{marginTop:8,padding:"7px 10px",background:"var(--ln2)",borderRadius:6,fontSize:11,color:"var(--i3)"}}>
+                📋 {trx.financeNote}
+              </div>
+            )}
+            {trx.oerCategories&&trx.oerCategories.length>0&&(
+              <details style={{marginTop:10}}>
+                <summary style={{fontSize:11,color:"var(--i3)",cursor:"pointer"}}>Lihat rincian OER</summary>
+                <div style={{marginTop:7}}>
+                  {trx.oerCategories.map((oc,i)=>(
+                    <div key={i} style={{display:"flex",justifyContent:"space-between",fontSize:12,padding:"4px 0",borderBottom:"1px solid var(--ln)"}}>
+                      <span style={{color:"var(--i3)"}}>{oc.cat}</span><span style={{fontWeight:600}}>{rp(oc.amt)}</span>
+                    </div>
+                  ))}
+                </div>
+              </details>
+            )}
+
+            {/* Finance: tombol Kirim untuk Konfirmasi */}
+            {isFin && !trx.settled && ["kurang_bayar","lebih_bayar"].includes(trx.status) && (
+              <button className="btn bp" onClick={sendForConfirmation} style={{marginTop:12,width:"100%"}}>
+                <Ic n="send" s={13}/>Kirim Nominal ke Karyawan untuk Konfirmasi
+              </button>
+            )}
+
+            {/* Employee: konfirmasi atau keberatan */}
+            {isOwner && trx.status==="awaiting_confirm" && (
+              <div style={{marginTop:12}}>
+                <div style={{padding:"10px 12px",background:"#fff7ed",borderRadius:"var(--r3)",border:"1px solid #fb923c",marginBottom:10}}>
+                  <p style={{fontSize:12,fontWeight:800,color:"#c2410c",marginBottom:2}}>📩 Finance meminta konfirmasi nominal ini</p>
+                  <p style={{fontSize:12,color:"#9a3412"}}>
+                    {rc.isKurang?`Perusahaan akan transfer ${rp(Math.abs(rc.selisih))} ke kamu`:
+                     rc.isLebih?`Kamu perlu kembalikan ${rp(Math.abs(rc.selisih))} ke perusahaan`:
+                     "Selisih Rp 0 — tidak ada transfer"}
+                  </p>
+                  {rc.isLebih&&(
+                    <p style={{fontSize:11,color:"#7c3aed",marginTop:4,fontFamily:"monospace"}}>
+                      Transfer ke: 489-988-9999 a.n. Satya Langgeng Sentosa (BCA)
+                    </p>
+                  )}
+                </div>
+                <button className="btn bg" onClick={confirmOer} style={{width:"100%"}}><Ic n="check" s={13}/>Saya Setuju &amp; Konfirmasi Nominal</button>
+              </div>
+            )}
+            {/* Employee: sudah konfirmasi */}
+            {isOwner && trx.status==="employee_confirmed" && (
+              <div style={{marginTop:10,padding:"9px 12px",background:"#f0fdf4",borderRadius:"var(--r3)",border:"1px solid #6ee7b7"}}>
+                <p style={{fontSize:12,fontWeight:800,color:"#065f46"}}>✓ Kamu sudah menyetujui nominal ini — menunggu Finance menyelesaikan</p>
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ═══════════════════════════════════════════════════════════════
 // DETAIL MODAL
 // ═══════════════════════════════════════════════════════════════
@@ -1392,50 +1600,7 @@ function DetailModal({ trx, user, onClose, onAction, onEdit }) {
 
               {/* ── REKONSILIASI CA vs OER ── */}
               {trx.type==="cash_advance" && rc && (
-                <div style={{marginBottom:16,border:"2px solid",borderColor:rc.isKurang?"#93c5fd":rc.isLebih?"#c4b5fd":"#6ee7b7",borderRadius:"var(--r2)",overflow:"hidden"}}>
-                  <div style={{padding:"9px 14px",background:rc.isKurang?"#dbeafe":rc.isLebih?"#ede9fe":"#ecfdf5",fontWeight:800,fontSize:12,color:rc.isKurang?"#1e3a8a":rc.isLebih?"#4c1d95":"#065f46",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                    <span>📊 Rekonsiliasi CA vs OER</span>
-                    {rc.isKurang&&<span style={{background:"#1e40af",color:"white",padding:"2px 10px",borderRadius:20,fontSize:11}}>KURANG BAYAR</span>}
-                    {rc.isLebih&&<span style={{background:"#7c3aed",color:"white",padding:"2px 10px",borderRadius:20,fontSize:11}}>LEBIH BAYAR</span>}
-                    {rc.isLunas&&<span style={{background:"#059669",color:"white",padding:"2px 10px",borderRadius:20,fontSize:11}}>LUNAS</span>}
-                  </div>
-                  <div style={{padding:"12px 14px"}}>
-                    <div style={{display:"flex",justifyContent:"space-between",marginBottom:6,fontSize:13}}>
-                      <span style={{color:"var(--i3)"}}>CA Dicairkan</span>
-                      <span style={{fontWeight:700}}>{rp(rc.ca)}</span>
-                    </div>
-                    <div style={{display:"flex",justifyContent:"space-between",marginBottom:6,fontSize:13}}>
-                      <span style={{color:"var(--i3)"}}>Total Biaya OER</span>
-                      <span style={{fontWeight:700}}>{rp(rc.oer)}</span>
-                    </div>
-                    <div style={{height:1,background:"var(--ln)",margin:"8px 0"}}/>
-                    <div style={{display:"flex",justifyContent:"space-between",fontSize:14}}>
-                      <span style={{fontWeight:800,color:rc.isKurang?"#1e40af":rc.isLebih?"#7c3aed":"#059669"}}>
-                        {rc.isKurang?"Perusahaan bayar ke karyawan":rc.isLebih?"Karyawan kembalikan ke perusahaan":"Selisih"}
-                      </span>
-                      <span style={{fontWeight:800,fontSize:16,color:rc.isKurang?"#1e40af":rc.isLebih?"#7c3aed":"#059669"}}>
-                        {rp(Math.abs(rc.selisih))}
-                      </span>
-                    </div>
-                    {trx.financeNote&&trx.settled&&(
-                      <div style={{marginTop:8,padding:"7px 10px",background:"var(--ln2)",borderRadius:6,fontSize:11,color:"var(--i3)"}}>
-                        📋 {trx.financeNote}
-                      </div>
-                    )}
-                    {trx.oerCategories&&trx.oerCategories.length>0&&(
-                      <details style={{marginTop:10}}>
-                        <summary style={{fontSize:11,color:"var(--i3)",cursor:"pointer"}}>Lihat rincian OER</summary>
-                        <div style={{marginTop:7}}>
-                          {trx.oerCategories.map((oc,i)=>(
-                            <div key={i} style={{display:"flex",justifyContent:"space-between",fontSize:12,padding:"4px 0",borderBottom:"1px solid var(--ln)"}}>
-                              <span style={{color:"var(--i3)"}}>{oc.cat}</span><span style={{fontWeight:600}}>{rp(oc.amt)}</span>
-                            </div>
-                          ))}
-                        </div>
-                      </details>
-                    )}
-                  </div>
-                </div>
+                <OerReconBox trx={trx} rc={rc} isFin={isFin} isOwner={isOwner} onAction={onAction}/>
               )}
 
               <p style={{fontSize:10.5,fontWeight:800,color:"var(--i3)",textTransform:"uppercase",letterSpacing:".08em",marginBottom:10}}>Progress</p>
@@ -1526,8 +1691,8 @@ function DetailModal({ trx, user, onClose, onAction, onEdit }) {
                 </div>
               )}
 
-              {/* Finance: confirm settlement kurang/lebih bayar */}
-              {isFin && trx.type==="cash_advance" && rc && !trx.settled && (
+              {/* Finance: settle — hanya setelah employee konfirmasi */}
+              {isFin && trx.type==="cash_advance" && rc && !trx.settled && trx.status==="employee_confirmed" && (
                 <div style={{marginTop:16,padding:14,borderRadius:"var(--r2)",border:"2px solid",
                   borderColor:rc.isKurang?"#93c5fd":rc.isLebih?"#c4b5fd":"#6ee7b7",
                   background:rc.isKurang?"#eff6ff":rc.isLebih?"#f5f3ff":"#f0fdf4"}}>
@@ -1535,39 +1700,47 @@ function DetailModal({ trx, user, onClose, onAction, onEdit }) {
                     color:rc.isKurang?"#1e3a8a":rc.isLebih?"#4c1d95":"#065f46"}}>
                     {rc.isKurang?"💙 Kurang Bayar — Transfer ke Karyawan":rc.isLebih?"💜 Lebih Bayar — Terima Kembalian":"💚 Pas — Konfirmasi Lunas"}
                   </p>
-                  <p style={{fontSize:13,marginBottom:10,fontWeight:700,
-                    color:rc.isKurang?"#1e40af":rc.isLebih?"#7c3aed":"#059669"}}>
-                    {rc.isKurang?`Transfer ${rp(Math.abs(rc.selisih))} ke ${trx.submitter}`:rc.isLebih?`Terima ${rp(Math.abs(rc.selisih))} dari ${trx.submitter}`:`Selisih Rp 0 — langsung konfirmasi`}
-                  </p>
-
-                  {/* Kurang bayar: input norek karyawan */}
+                  <div style={{padding:"10px 12px",background:"#f0fdf4",borderRadius:"var(--r3)",border:"1px solid #6ee7b7",marginBottom:10}}>
+                    <p style={{fontSize:11,fontWeight:800,color:"#065f46"}}>✓ Karyawan sudah menyetujui nominal ini</p>
+                    <p style={{fontSize:13,fontWeight:700,color:rc.isKurang?"#1e40af":rc.isLebih?"#7c3aed":"#059669",marginTop:2}}>
+                      {rc.isKurang?`Transfer ${rp(Math.abs(rc.selisih))} ke ${trx.submitter}`:rc.isLebih?`Terima ${rp(Math.abs(rc.selisih))} dari ${trx.submitter}`:`Selisih Rp 0`}
+                    </p>
+                  </div>
                   {rc.isKurang && (
                     <div style={{marginBottom:10}}>
-                      <label style={{fontSize:11,fontWeight:700,color:"#1e3a8a",display:"block",marginBottom:4}}>
-                        No. Rekening Karyawan <span style={{color:"var(--rd)"}}>*</span>
-                      </label>
-                      <input value={norek} onChange={e=>setNorek(e.target.value)}
-                        placeholder="Contoh: 1234-5678-9012 BCA a.n. Nama"
-                        style={{marginBottom:0,borderColor:"#93c5fd"}}/>
+                      <label style={{fontSize:11,fontWeight:700,color:"#1e3a8a",display:"block",marginBottom:4}}>No. Rekening Karyawan *</label>
+                      <input value={norek} onChange={e=>setNorek(e.target.value)} placeholder="Contoh: 1234-5678-9012 BCA a.n. Nama" style={{marginBottom:0,borderColor:"#93c5fd"}}/>
                     </div>
                   )}
-
-                  {/* Lebih bayar: info rekening perusahaan */}
                   {rc.isLebih && (
                     <div style={{marginBottom:10,padding:"10px 12px",background:"#ede9fe",borderRadius:"var(--r3)",border:"1px solid #c4b5fd"}}>
-                      <p style={{fontSize:11,fontWeight:800,color:"#4c1d95",marginBottom:4}}>📌 Karyawan transfer kembalian ke:</p>
-                      <p style={{fontSize:13,fontWeight:700,color:"#4c1d95",fontFamily:"monospace"}}>489-988-9999 a.n. Satya Langgeng Sentosa (BCA)</p>
+                      <p style={{fontSize:11,fontWeight:800,color:"#4c1d95",marginBottom:2}}>📌 Karyawan transfer ke:</p>
+                      <p style={{fontSize:12,fontWeight:700,color:"#4c1d95",fontFamily:"monospace"}}>489-988-9999 a.n. Satya Langgeng Sentosa (BCA)</p>
                     </div>
                   )}
-
                   <textarea value={note} onChange={e=>setNote(e.target.value)}
-                    placeholder={rc.isKurang?"No. referensi transfer...":rc.isLebih?"Konfirmasi penerimaan kembalian...":"Catatan settlement..."}
+                    placeholder={rc.isKurang?"No. referensi transfer...":rc.isLebih?"Konfirmasi penerimaan kembalian...":"Catatan..."}
                     rows={2} style={{marginBottom:9}}/>
                   <button className="btn bg" onClick={settle} disabled={busy||(rc.isKurang&&!norek)}>
-                    {busy?<span className="sp2"/>:<Ic n="check" s={13}/>}
+                    <Ic n="check" s={13}/>
                     {rc.isKurang?"Konfirmasi Sudah Transfer":rc.isLebih?"Konfirmasi Sudah Diterima":"Konfirmasi Lunas"}
                   </button>
                   {rc.isKurang&&!norek&&<p style={{fontSize:10.5,color:"var(--rd)",marginTop:5}}>* Isi nomor rekening karyawan dulu</p>}
+                </div>
+              )}
+              {/* Finance: menunggu konfirmasi karyawan */}
+              {isFin && trx.type==="cash_advance" && rc && !trx.settled && trx.status==="awaiting_confirm" && (
+                <div style={{marginTop:16,padding:14,background:"#fff7ed",borderRadius:"var(--r2)",border:"2px solid #fb923c"}}>
+                  <p style={{fontSize:13,fontWeight:800,color:"#c2410c",marginBottom:4}}>⏳ Menunggu konfirmasi karyawan</p>
+                  <p style={{fontSize:12,color:"#9a3412"}}>Nominal sudah dikirim ke {trx.submitter} untuk dikonfirmasi. Tombol settle akan muncul setelah karyawan menyetujui.</p>
+                </div>
+              )}
+              {/* Finance: karyawan keberatan */}
+              {isFin && trx.type==="cash_advance" && trx.status==="disputed" && (
+                <div style={{marginTop:16,padding:14,background:"var(--rdb)",borderRadius:"var(--r2)",border:"2px solid var(--rdbd)"}}>
+                  <p style={{fontSize:13,fontWeight:800,color:"var(--rd)",marginBottom:4}}>⚠️ Karyawan mengajukan keberatan</p>
+                  <p style={{fontSize:12,color:"#7f1d1d",marginBottom:10}}>{trx.financeNote||"Karyawan tidak setuju dengan nominal OER."}</p>
+                  <p style={{fontSize:11,color:"var(--i3)"}}>Silakan edit OER di atas dan kirim ulang untuk konfirmasi.</p>
                 </div>
               )}
 
@@ -1644,6 +1817,16 @@ export default function App() {
         const newStatus = selisih > 0 ? "kurang_bayar" : selisih < 0 ? "lebih_bayar" : "settled";
         return {...d, oerAmount:oer.oerAmount, oerCategories:oer.oerCategories, oerNote:oer.oerNote, oerDate:oer.oerDate, status:newStatus};
       }
+      if (action==="edit_oer") {
+        const {oerCategories, oerNote, caAmount} = noteOrData;
+        const oerAmount = oerCategories.reduce((s,it)=>s+(it.amt||0),0);
+        const selisih   = oerAmount - caAmount;
+        const newStatus = selisih > 0 ? "kurang_bayar" : selisih < 0 ? "lebih_bayar" : "settled";
+        return {...d, oerAmount, oerCategories, oerNote, status:newStatus};
+      }
+      if (action==="send_confirm")  return {...d, status:"awaiting_confirm"};
+      if (action==="emp_confirm")   return {...d, status:"employee_confirmed"};
+      if (action==="emp_dispute")   return {...d, status:"disputed", financeNote:noteOrData};
       const m = {
         approve:  {status:"approved"},
         reject:   {status:"rejected",   financeNote:noteOrData},
@@ -1657,7 +1840,9 @@ export default function App() {
       approve:"✓ Pengajuan disetujui", reject:"Pengajuan ditolak",
       process:"✓ Mulai diproses", pay:"✓ CA dicairkan — menunggu OER",
       settle:"✓ Settlement dikonfirmasi — CA lunas",
-      oer_submitted:"✓ OER berhasil disubmit — rekonsiliasi selesai",
+      oer_submitted:"✓ OER berhasil disubmit",
+      edit_oer:"✓ OER dikoreksi", send_confirm:"✓ Nominal dikirim ke karyawan untuk konfirmasi",
+      emp_confirm:"✓ Karyawan menyetujui nominal", emp_dispute:"Karyawan mengajukan keberatan",
     };
     showToast(msgs[action]||"Berhasil");
     setSelId(null);
