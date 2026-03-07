@@ -93,30 +93,34 @@ const isOverdue = (d) => {
 const SB = {
   // Base fetch ke Supabase REST
   async req(method, path, body=null, params=null) {
-    if (!isReady()) return null;
+    if (!isReady()) { console.warn("Supabase not configured"); return null; }
     try {
       let url = CONFIG.SUPABASE_URL + "/rest/v1/" + path;
-      if (params) url += "?" + new URLSearchParams(params).toString();
+      if (params) {
+        const qs = Object.entries(params).map(([k,v])=>k+"="+encodeURIComponent(v)).join("&");
+        url += "?" + qs;
+      }
       const headers = {
         "apikey": CONFIG.SUPABASE_KEY,
         "Authorization": "Bearer " + CONFIG.SUPABASE_KEY,
         "Content-Type": "application/json",
-        "Prefer": method==="POST" ? "return=representation" : "return=minimal",
+        "Prefer": "return=representation",
       };
-      const r = await fetch(url, { method, headers, body: body ? JSON.stringify(body) : null });
-      if (r.status===204||r.status===200||r.status===201) {
-        const txt = await r.text();
+      const fetchOpts = { method, headers };
+      if (body && method !== "GET") fetchOpts.body = JSON.stringify(body);
+      const r = await fetch(url, fetchOpts);
+      const txt = await r.text();
+      if (r.status >= 200 && r.status < 300) {
         return txt ? JSON.parse(txt) : { ok:true };
       }
-      const err = await r.text();
-      console.error("Supabase error:", r.status, err);
+      console.error("Supabase error", r.status, path, txt);
       return null;
     } catch(e) { console.error("fetch error:", e); return null; }
   },
 
   // ── Transactions ─────────────────────────────────────────
   async getAll() {
-    const rows = await SB.req("GET","transactions","",{select:"*",order:"submitted.desc"});
+    const rows = await SB.req("GET","transactions",null,{select:"*",order:"submitted.desc"});
     if (!rows) return null;
     return rows.map(r=>({
       id:r.id, type:r.type, submitter:r.submitter, dept:r.dept,
@@ -146,7 +150,7 @@ const SB = {
   },
 
   async update(id, patch) {
-    return SB.req("PATCH","transactions",patch,{id:"eq."+id});
+    return SB.req("PATCH","transactions",patch,{"id":"eq."+id});
   },
 
   async updateStatus(id, status, note) {
@@ -189,7 +193,7 @@ const SB = {
   // ── Accounts ─────────────────────────────────────────────
   async registerAcc(acc) {
     // Cek duplikat dulu
-    const existing = await SB.req("GET","accounts","",{"username":"eq."+acc.username.toLowerCase(),"select":"username"});
+    const existing = await SB.req("GET","accounts",null,{"username":"eq."+acc.username.toLowerCase(),"select":"username"});
     if (existing && existing.length>0) return { ok:false, error:"Username sudah dipakai" };
     const res = await SB.req("POST","accounts",{
       username:acc.username.toLowerCase(), password:acc.password,
@@ -199,7 +203,7 @@ const SB = {
   },
 
   async loginAcc(username, password) {
-    const rows = await SB.req("GET","accounts","",{
+    const rows = await SB.req("GET","accounts",null,{
       "username":"eq."+username.toLowerCase(),
       "password":"eq."+password,
       "select":"username,name,dept"
@@ -714,16 +718,15 @@ function Dashboard({ data, user, nav }) {
 // ═══════════════════════════════════════════════════════════════
 function SubmitPage({ user, onSubmit, data }) {
   const [f,setF] = useState({type:"reimburse",purpose:"",destination:"Jakarta",dateStart:"",dateEnd:"",approverName:"",notes:"",caRef:"",items:[{cat:"Perjalanan Dinas",amt:""}]});
-  const [busy,setBusy] = useState(false);
+  const [submitState,setSubmitState] = useState("idle"); // idle | saving | verifying | done | error
+  const [savedEntry,setSavedEntry]   = useState(null);
   const set=(k,v)=>setF(p=>({...p,[k]:v}));
   const si=(i,k,v)=>setF(p=>{const it=[...p.items];it[i]={...it[i],[k]:v};return{...p,items:it};});
   const total = f.items.reduce((a,it)=>a+(parseFloat(it.amt)||0),0);
-  // CA milik user yg sudah dicairkan dan belum ada OER
   const myCAs = (data||[]).filter(d=>d.type==="cash_advance"&&d.submitter===user.name&&["paid","awaiting_oer"].includes(d.status)&&!d.oerAmount);
 
   const submit = async () => {
     if (!f.purpose||!f.dateStart||!f.dateEnd||!f.approverName||total===0) { alert("Harap lengkapi semua field wajib (*)"); return; }
-    setBusy(true);
     const entry = {
       id:gid(), type:f.type, submitter:user.name, dept:user.dept,
       purpose:f.purpose, destination:f.destination, dateStart:f.dateStart, dateEnd:f.dateEnd,
@@ -732,11 +735,80 @@ function SubmitPage({ user, onSubmit, data }) {
       notes:f.notes, settled:false, settledDate:null, approverName:f.approverName,
       financeNote:"", caRef:f.caRef||"", oerAmount:0,
     };
-    if (isReady()) await API.create(entry);
-    else await new Promise(r=>setTimeout(r,500));
-    setBusy(false);
+    if (!isReady()) { onSubmit(entry); return; }
+
+    setSubmitState("saving");
+    setSavedEntry(entry);
+
+    // Step 1: kirim ke Supabase
+    const res = await API.create(entry);
+    if (!res) { setSubmitState("error"); return; }
+
+    // Step 2: verifikasi — pastikan data benar-benar ada di Supabase
+    setSubmitState("verifying");
+    let verified = false;
+    for (let attempt=0; attempt<4; attempt++) {
+      await new Promise(r=>setTimeout(r,800));
+      const rows = await API.getAll();
+      if (rows && rows.find(d=>d.id===entry.id)) { verified=true; break; }
+    }
+    if (!verified) { setSubmitState("error"); return; }
+
+    setSubmitState("done");
+    await new Promise(r=>setTimeout(r,1200)); // tampilkan success sebentar
     onSubmit(entry);
   };
+
+  // Error state — bisa retry
+  if (submitState==="error") return (
+    <div className="card"><div className="cb" style={{textAlign:"center",padding:"32px 16px"}}>
+      <div style={{fontSize:36,marginBottom:12}}>❌</div>
+      <p style={{fontSize:15,fontWeight:800,color:"var(--rd)",marginBottom:8}}>Gagal menyimpan pengajuan</p>
+      <p style={{fontSize:12,color:"var(--i3)",marginBottom:20}}>Data tidak tersimpan ke database. Periksa koneksi internet dan coba lagi.</p>
+      <div style={{display:"flex",gap:9,justifyContent:"center"}}>
+        <button className="btn bo" onClick={()=>setSubmitState("idle")}>← Kembali ke Form</button>
+        <button className="btn bp" onClick={()=>{ setSubmitState("saving"); submit(); }}>🔄 Coba Lagi</button>
+      </div>
+    </div></div>
+  );
+
+  // Loading states
+  if (submitState==="saving"||submitState==="verifying"||submitState==="done") {
+    const steps = [
+      {key:"saving",    icon:"⏳", label:"Menyimpan ke database...",           done: submitState!=="saving"},
+      {key:"verifying", icon:"🔍", label:"Memverifikasi data tersimpan...",     done: submitState==="done"},
+      {key:"done",      icon:"✅", label:"Pengajuan berhasil dikirim ke Admin!", done: false},
+    ];
+    const curIdx = submitState==="saving"?0:submitState==="verifying"?1:2;
+    return (
+      <div className="card"><div className="cb" style={{padding:"40px 16px"}}>
+        <div style={{maxWidth:380,margin:"0 auto"}}>
+          <p style={{fontSize:14,fontWeight:800,color:"var(--ink)",marginBottom:24,textAlign:"center"}}>
+            {submitState==="done"?"🎉 Pengajuan Terkirim!":"⏳ Memproses Pengajuan..."}
+          </p>
+          {steps.map((st,i)=>(
+            <div key={st.key} style={{display:"flex",alignItems:"center",gap:12,padding:"11px 14px",marginBottom:8,
+              borderRadius:"var(--r2)",border:"1px solid",
+              borderColor: i<curIdx?"var(--gnbd)":i===curIdx?"var(--tlbd)":"var(--ln)",
+              background: i<curIdx?"var(--gnb)":i===curIdx?"var(--tlb)":"var(--w)"}}>
+              <span style={{fontSize:18}}>{i<curIdx?"✅":i===curIdx?st.icon:"⬜"}</span>
+              <span style={{fontSize:13,fontWeight:i===curIdx?700:400,
+                color:i<curIdx?"var(--gn)":i===curIdx?"var(--tl)":"var(--i4)"}}>
+                {st.label}
+              </span>
+              {i===curIdx&&submitState!=="done"&&<span className="sp2" style={{marginLeft:"auto"}}/>}
+            </div>
+          ))}
+          {submitState==="done"&&savedEntry&&(
+            <div style={{marginTop:16,padding:"12px 14px",background:"var(--gnb)",borderRadius:"var(--r2)",border:"1px solid var(--gnbd)",textAlign:"center"}}>
+              <p style={{fontSize:12,color:"var(--gn)",fontWeight:700}}>ID: {savedEntry.id}</p>
+              <p style={{fontSize:11,color:"var(--i3)",marginTop:3}}>Admin sudah bisa lihat pengajuan ini sekarang.</p>
+            </div>
+          )}
+        </div>
+      </div></div>
+    );
+  }
 
   return (
     <div><div className="card">
@@ -795,7 +867,7 @@ function SubmitPage({ user, onSubmit, data }) {
         <div className="fs mb4"><div className="fst">Catatan (Opsional)</div><textarea value={f.notes} onChange={e=>set("notes",e.target.value)} placeholder="Catatan untuk Finance..." rows={2}/></div>
         <div style={{display:"flex",justifyContent:"flex-end",gap:9}}>
           <button className="btn bo" onClick={()=>setF({type:"reimburse",purpose:"",destination:"Jakarta",dateStart:"",dateEnd:"",approverName:"",notes:"",items:[{cat:"Perjalanan Dinas",amt:""}]})}>Reset</button>
-          <button className="btn bp" onClick={submit} disabled={busy}>{busy?<span className="sp2"/>:<Ic n="send" s={13}/>}{busy?"Menyimpan...":"Submit Pengajuan"}</button>
+          <button className="btn bp" onClick={submit} disabled={submitState!=="idle"}><Ic n="send" s={13}/>Submit Pengajuan</button>
         </div>
       </div>
     </div></div>
@@ -900,8 +972,14 @@ function ApprovalPage({ data, onAction, onSel, user }) {
               <td style={{fontSize:11,color:"var(--i3)"}}>{fd(d.submitted)}</td>
               <td onClick={e=>e.stopPropagation()}>
                 <div style={{display:"flex",gap:5}}>
-                  <button className="btn bg xs" onClick={()=>onAction(d.id,"approve","Disetujui")}><Ic n="check" s={11}/>OK</button>
-                  <button className="btn br2 xs" onClick={()=>onAction(d.id,"reject","Ditolak")}><Ic n="x" s={11}/>Tolak</button>
+                  <button className="btn bg xs" onClick={()=>{
+                    onAction(d.id,"approve","Disetujui");
+                    if(isReady()) API.update(d.id,"approved","Disetujui").catch(()=>{});
+                  }}><Ic n="check" s={11}/>OK</button>
+                  <button className="btn br2 xs" onClick={()=>{
+                    onAction(d.id,"reject","Ditolak");
+                    if(isReady()) API.update(d.id,"rejected","Ditolak").catch(()=>{});
+                  }}><Ic n="x" s={11}/>Tolak</button>
                 </div>
               </td>
             </tr>
@@ -1205,25 +1283,20 @@ function DetailModal({ trx, user, onClose, onAction, onEdit }) {
   const isOwner = user.role==="employee" && trx.submitter===user.name;
   const canEdit = (isFin || (isOwner && trx.status!=="paid" && trx.status!=="rejected"));
 
-  const act = async (action, n) => {
-    setBusy(true);
+  const act = (action, n) => {
     const sm = {approve:"approved",reject:"rejected",process:"processing",pay:"awaiting_oer"};
-    if (isReady()) {
-      await API.update(trx.id, sm[action]||action, n);
-    } else {
-      await new Promise(r=>setTimeout(r,400));
-    }
-    setBusy(false);
+    // UI update INSTAN — Supabase sync di background
     onAction(trx.id, action, n);
+    if (isReady()) API.update(trx.id, sm[action]||action, n)
+      .catch(e=>console.error("sync error:",e));
   };
   const [norek, setNorek] = useState("");
-  const settle = async () => {
-    setBusy(true);
+  const settle = () => {
     const settleNote = note + (norek ? ` | Rek: ${norek}` : "");
-    if (isReady()) await API.settle(trx.id, settleNote);
-    else await new Promise(r=>setTimeout(r,400));
-    setBusy(false);
+    // UI update INSTAN — Supabase sync di background
     onAction(trx.id, "settle", settleNote);
+    if (isReady()) API.settle(trx.id, settleNote)
+      .catch(e=>console.error("settle sync error:",e));
   };
   // OER submission state (for employee submitting OER against CA)
   const [oerItems, setOerItems] = useState(OER_CATS.map(cat=>({cat,amt:""})));
@@ -1232,18 +1305,17 @@ function DetailModal({ trx, user, onClose, onAction, onEdit }) {
   const oerTotal = oerItems.reduce((a,it)=>a+(parseFloat(it.amt)||0),0);
   const setOi = (i,v) => setOerItems(prev=>{const n=[...prev];n[i]={...n[i],amt:v};return n;});
 
-  const submitOer = async () => {
+  const submitOer = () => {
     if (oerTotal===0) { alert("Isi minimal satu item biaya OER"); return; }
-    setBusy(true);
     const oerData = {
       oerAmount: oerTotal,
       oerCategories: oerItems.filter(it=>parseFloat(it.amt)>0).map(it=>({cat:it.cat,amt:parseFloat(it.amt)})),
       oerNote, oerDate: today(),
     };
-    if (isReady()) await API.submitOer(trx.id, oerData, trx.amount);
-    else await new Promise(r=>setTimeout(r,400));
-    setBusy(false);
+    // UI update INSTAN — Supabase sync di background
     onAction(trx.id, "oer_submitted", oerData);
+    if (isReady()) API.submitOer(trx.id, oerData, trx.amount)
+      .catch(e=>console.error("oer sync error:",e));
   };
   const rc = recon(trx);
 
@@ -1530,7 +1602,7 @@ export default function App() {
     if (isReady()) {
       setLoading(true);
       const res = await API.getAll();
-      if (res?.data?.length) setData(res.data.map(d=>isOverdue(d)?{...d,status:"overdue"}:d));
+      if (Array.isArray(res)) setData(res.map(d=>isOverdue(d)?{...d,status:"overdue"}:d));
       setLoading(false);
     }
   };
@@ -1542,7 +1614,9 @@ export default function App() {
   const reloadData = async () => {
     if (!isReady()) return;
     const rows = await API.getAll();
-    if (rows?.length) setData(rows.map(d=>isOverdue(d)?{...d,status:"overdue"}:d));
+    if (Array.isArray(rows) && rows.length >= 0) {
+      setData(rows.map(d=>isOverdue(d)?{...d,status:"overdue"}:d));
+    }
   };
 
   // Auto-reload saat user balik ke browser tab / buka app lagi dari background
@@ -1588,7 +1662,7 @@ export default function App() {
     showToast(msgs[action]||"Berhasil");
     setSelId(null);
     // Sync dari Sheets 1.5 detik setelah aksi — pastikan data konsisten
-    if (isReady()) setTimeout(reloadData, 1500);
+    if (isReady()) setTimeout(reloadData, 2000); // sync dari Supabase setelah action
   };
 
   const handleEdit = (updated) => {
@@ -1596,7 +1670,18 @@ export default function App() {
     showToast("✓ Perubahan disimpan");
   };
 
-  const handleSubmit = (entry) => { setData(p=>[entry,...p].map(d=>isOverdue(d)?{...d,status:"overdue"}:d)); showToast(`\u2713 ${entry.id} berhasil dikirim`); setPage("list"); };
+  const handleSubmit = async (entry) => {
+    // Tambah ke local state dulu (instan)
+    setData(p=>[entry,...p].map(d=>isOverdue(d)?{...d,status:"overdue"}:d));
+    showToast(`✓ ${entry.id} berhasil dikirim ke Admin`);
+    setPage("list");
+    // Kemudian reload dari Supabase untuk sync semua user
+    if (isReady()) {
+      await new Promise(r=>setTimeout(r,500));
+      const rows = await API.getAll();
+      if (Array.isArray(rows)) setData(rows.map(d=>isOverdue(d)?{...d,status:"overdue"}:d));
+    }
+  };
   const nav = (p, id) => { if (id) setSelId(id); setPage(p); setSideOpen(false); };
 
   const pCt = data.filter(d=>d.status==="pending").length;
@@ -1653,7 +1738,7 @@ export default function App() {
                 {isReady()?"Supabase ✓":"Tidak terhubung"}
               </span>
               {user.role==="employee"&&page!=="submit"&&<button className="btn bp sm" onClick={()=>nav("submit")}><Ic n="plus" s={13}/>Ajukan</button>}
-              {isReady()&&<button className="btn bo sm" title="Refresh data" onClick={()=>{setLoading(true);API.getAll().then(r=>{if(r?.data?.length)setData(r.data);setLoading(false);});}}><Ic n="refresh" s={13}/></button>}
+              {isReady()&&<button className="btn bo sm" title="Refresh data" onClick={()=>{setLoading(true);API.getAll().then(r=>{if(Array.isArray(r))setData(r.map(d=>isOverdue(d)?{...d,status:"overdue"}:d));setLoading(false);});}}><Ic n="refresh" s={13}/></button>}
             </div>
           </div>
 
