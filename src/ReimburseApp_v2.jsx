@@ -10,7 +10,7 @@ const _saveConfig = (obj) => { try { localStorage.setItem(LS_CONFIG, JSON.string
 const _cfg = _loadConfig();
 
 const CONFIG = {
-  SCRIPT_URL:    _cfg.SCRIPT_URL    || "https://script.google.com/macros/s/AKfycbzF85jBC3pVY9t7geZiXvVB4tNMY_XzEEQjc84x6-D144lWgLgciY8kcFFkc1fe9IWq7g/exec",
+  SCRIPT_URL:    _cfg.SCRIPT_URL    || "https://script.google.com/macros/s/AKfycbxrLNOZ2M2wSnjyw1VMGLrpFqBJEBy2eQrZu_MKyuW7MGzJmnNZphEAgMBd6XIaEHL2/exec",
   PASS_APPROVER: _cfg.PASS_APPROVER || "approver123",
   PASS_FINANCE:  _cfg.PASS_FINANCE  || "finance123",
 };
