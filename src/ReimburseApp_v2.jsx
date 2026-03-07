@@ -1276,7 +1276,6 @@ function EditForm({ trx, user, onSave, onCancel }) {
 // ═══════════════════════════════════════════════════════════════
 function DetailModal({ trx, user, onClose, onAction, onEdit }) {
   const [note,setNote]   = useState("");
-  const [busy,setBusy]   = useState(false);
   const [editing,setEditing] = useState(false);
   const isApp = user.role==="approver";
   const isFin = user.role==="finance";
