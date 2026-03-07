@@ -1,19 +1,21 @@
 import { useState, useEffect } from "react";
 
 // ═══════════════════════════════════════════════════════════════
-// ⚙️  KONFIGURASI — GANTI SESUAI KEBUTUHAN
+// ⚙️  KONFIGURASI SUPABASE
+// Isi SUPABASE_URL dan SUPABASE_KEY dari Project Settings → API
 // ═══════════════════════════════════════════════════════════════
-// ── Persist CONFIG ke localStorage ──────────────────────────
-const LS_CONFIG = "reimburse_config_v3";
+const LS_CONFIG = "reimburse_config_v4";
 const _loadConfig = () => { try { return JSON.parse(localStorage.getItem(LS_CONFIG)||"{}"); } catch { return {}; } };
 const _saveConfig = (obj) => { try { localStorage.setItem(LS_CONFIG, JSON.stringify(obj)); } catch {} };
 const _cfg = _loadConfig();
 
 const CONFIG = {
-  SCRIPT_URL:    _cfg.SCRIPT_URL    || "https://script.google.com/macros/s/AKfycbxrLNOZ2M2wSnjyw1VMGLrpFqBJEBy2eQrZu_MKyuW7MGzJmnNZphEAgMBd6XIaEHL2/exec",
+  SUPABASE_URL:  _cfg.SUPABASE_URL  || "",
+  SUPABASE_KEY:  _cfg.SUPABASE_KEY  || "",
   PASS_APPROVER: _cfg.PASS_APPROVER || "approver123",
   PASS_FINANCE:  _cfg.PASS_FINANCE  || "finance123",
 };
+const isReady = () => CONFIG.SUPABASE_URL && CONFIG.SUPABASE_KEY;
 
 // ═══════════════════════════════════════════════════════════════
 // CONSTANTS
@@ -87,29 +89,136 @@ const isOverdue = (d) => {
   return false;
 };
 
-// ── Sheets API ───────────────────────────────────────────────
-const API = {
-  async post(action, extra={}) {
-    if (!CONFIG.SCRIPT_URL) return null;
+// ── Supabase REST API ────────────────────────────────────────
+const SB = {
+  // Base fetch ke Supabase REST
+  async req(method, path, body=null, params=null) {
+    if (!isReady()) return null;
     try {
-      // Kirim via URL query string — paling reliable untuk Apps Script
-      // Apps Script kadang redirect POST→GET, payload di query string selalu terbaca
-      const payload = encodeURIComponent(JSON.stringify({ action, ...extra }));
-      const url = CONFIG.SCRIPT_URL + "?payload=" + payload;
-      const r = await fetch(url, { method:"GET", redirect:"follow" });
-      const txt = await r.text();
-      try { return JSON.parse(txt); }
-      catch { console.error("Apps Script response:", txt); return null; }
+      let url = CONFIG.SUPABASE_URL + "/rest/v1/" + path;
+      if (params) url += "?" + new URLSearchParams(params).toString();
+      const headers = {
+        "apikey": CONFIG.SUPABASE_KEY,
+        "Authorization": "Bearer " + CONFIG.SUPABASE_KEY,
+        "Content-Type": "application/json",
+        "Prefer": method==="POST" ? "return=representation" : "return=minimal",
+      };
+      const r = await fetch(url, { method, headers, body: body ? JSON.stringify(body) : null });
+      if (r.status===204||r.status===200||r.status===201) {
+        const txt = await r.text();
+        return txt ? JSON.parse(txt) : { ok:true };
+      }
+      const err = await r.text();
+      console.error("Supabase error:", r.status, err);
+      return null;
     } catch(e) { console.error("fetch error:", e); return null; }
   },
-  getAll:      ()       => API.post("getAll"),
-  create:      (data)   => API.post("create",       { data }),
-  update:      (id,s,n) => API.post("updateStatus", { id, status:s, note:n }),
-  settle:      (id,n)   => API.post("settle",       { id, note:n }),
-  submitOer:   (id,d)   => API.post("submitOer",    { id, data:d }),
-  registerAcc: (acc)    => API.post("registerAcc",  { acc }),
-  loginAcc:    (u,p)    => API.post("loginAcc",     { username:u, password:p }),
-  editData:    (id,d)   => API.post("editData",     { id, data:d }),
+
+  // ── Transactions ─────────────────────────────────────────
+  async getAll() {
+    const rows = await SB.req("GET","transactions","",{select:"*",order:"submitted.desc"});
+    if (!rows) return null;
+    return rows.map(r=>({
+      id:r.id, type:r.type, submitter:r.submitter, dept:r.dept,
+      purpose:r.purpose, destination:r.destination,
+      dateStart:r.date_start, dateEnd:r.date_end,
+      amount:r.amount, status:r.status, submitted:r.submitted,
+      categories:r.categories||[], notes:r.notes||"",
+      settled:r.settled||false, settledDate:r.settled_date||null,
+      approverName:r.approver_name||"", financeNote:r.finance_note||"",
+      oerAmount:r.oer_amount||0, oerCategories:r.oer_categories||[],
+      oerNote:r.oer_note||"", oerDate:r.oer_date||"",
+      caRef:r.ca_ref||"",
+    }));
+  },
+
+  async create(d) {
+    return SB.req("POST","transactions",{
+      id:d.id, type:d.type, submitter:d.submitter, dept:d.dept,
+      purpose:d.purpose, destination:d.destination,
+      date_start:d.dateStart, date_end:d.dateEnd,
+      amount:d.amount, status:d.status||"pending",
+      submitted:d.submitted, categories:d.categories||[],
+      notes:d.notes||"", settled:false, settled_date:null,
+      approver_name:d.approverName||"", finance_note:"",
+      oer_amount:0, oer_categories:[], oer_note:"", oer_date:"", ca_ref:d.caRef||"",
+    });
+  },
+
+  async update(id, patch) {
+    return SB.req("PATCH","transactions",patch,{id:"eq."+id});
+  },
+
+  async updateStatus(id, status, note) {
+    const patch = { status };
+    if (note) patch.finance_note = note;
+    if (status==="awaiting_oer"||status==="paid") patch.settled_date = today();
+    return SB.update(id, patch);
+  },
+
+  async settle(id, note) {
+    return SB.update(id, { status:"settled", settled:true, settled_date:today(), finance_note:note||"" });
+  },
+
+  async submitOer(id, oerData, caAmount) {
+    const selisih = oerData.oerAmount - caAmount;
+    const newStatus = selisih > 0 ? "kurang_bayar" : selisih < 0 ? "lebih_bayar" : "settled";
+    return SB.update(id, {
+      oer_amount:oerData.oerAmount,
+      oer_categories:oerData.oerCategories,
+      oer_note:oerData.oerNote||"",
+      oer_date:oerData.oerDate||today(),
+      status:newStatus,
+      settled: newStatus==="settled",
+    });
+  },
+
+  async editData(id, d) {
+    const patch = {};
+    if (d.purpose)     patch.purpose     = d.purpose;
+    if (d.destination) patch.destination = d.destination;
+    if (d.dateStart)   patch.date_start  = d.dateStart;
+    if (d.dateEnd)     patch.date_end    = d.dateEnd;
+    if (d.amount)      patch.amount      = d.amount;
+    if (d.categories)  patch.categories  = d.categories;
+    if (d.notes!==undefined) patch.notes = d.notes;
+    if (d.approverName) patch.approver_name = d.approverName;
+    return SB.update(id, patch);
+  },
+
+  // ── Accounts ─────────────────────────────────────────────
+  async registerAcc(acc) {
+    // Cek duplikat dulu
+    const existing = await SB.req("GET","accounts","",{"username":"eq."+acc.username.toLowerCase(),"select":"username"});
+    if (existing && existing.length>0) return { ok:false, error:"Username sudah dipakai" };
+    const res = await SB.req("POST","accounts",{
+      username:acc.username.toLowerCase(), password:acc.password,
+      name:acc.name, dept:acc.dept, created_at:new Date().toISOString()
+    });
+    return res ? { ok:true } : { ok:false, error:"Gagal menyimpan akun" };
+  },
+
+  async loginAcc(username, password) {
+    const rows = await SB.req("GET","accounts","",{
+      "username":"eq."+username.toLowerCase(),
+      "password":"eq."+password,
+      "select":"username,name,dept"
+    });
+    if (rows && rows.length>0) return { ok:true, ...rows[0] };
+    return { ok:false, error:"Username atau password salah" };
+  },
+};
+
+// Alias API → SB untuk kompatibilitas dengan kode yang sudah ada
+const API = {
+  getAll:      ()       => SB.getAll(),
+  create:      (data)   => SB.create(data),
+  update:      (id,s,n) => SB.updateStatus(id,s,n),
+  settle:      (id,n)   => SB.settle(id,n),
+  submitOer:   (id,d,ca)=> SB.submitOer(id,d,ca),
+  registerAcc: (acc)    => SB.registerAcc(acc),
+  loginAcc:    (u,p)    => SB.loginAcc(u,p),
+  editData:    (id,d)   => SB.editData(id,d),
 };
 
 
@@ -371,7 +480,7 @@ function LoginScreen({ onLogin }) {
     const av   = regName.trim().split(" ").map(w=>w[0]).join("").toUpperCase().slice(0,2);
     const newAcc = { username:ukey, name:regName.trim(), dept:regDept, avatar:av, password:regPass };
     setBusy2(true);
-    if (CONFIG.SCRIPT_URL) {
+    if (isReady()) {
       // Sheets mode: ignore localStorage sepenuhnya
       const res = await API.registerAcc(newAcc);
       setBusy2(false);
@@ -394,7 +503,7 @@ function LoginScreen({ onLogin }) {
     if (!pass)            return setErr("Masukkan password");
     const ukey = username.toLowerCase().trim();
     setBusy2(true);
-    if (CONFIG.SCRIPT_URL) {
+    if (isReady()) {
       // Sheets mode: ignore localStorage sepenuhnya
       const res = await API.loginAcc(ukey, pass);
       setBusy2(false);
@@ -623,7 +732,7 @@ function SubmitPage({ user, onSubmit, data }) {
       notes:f.notes, settled:false, settledDate:null, approverName:f.approverName,
       financeNote:"", caRef:f.caRef||"", oerAmount:0,
     };
-    if (CONFIG.SCRIPT_URL) await API.create(entry);
+    if (isReady()) await API.create(entry);
     else await new Promise(r=>setTimeout(r,500));
     setBusy(false);
     onSubmit(entry);
@@ -887,34 +996,63 @@ function MonitorPage({ data, onSel }) {
 // SETTINGS PAGE
 // ═══════════════════════════════════════════════════════════════
 function SettingsPage({ onSave }) {
-  const [url,setUrl]   = useState(CONFIG.SCRIPT_URL);
-  const [pa,setPa]     = useState(CONFIG.PASS_APPROVER);
-  const [pf,setPf]     = useState(CONFIG.PASS_FINANCE);
-  const [saved,setSaved]= useState(false);
+  const [sbUrl,setSbUrl] = useState(CONFIG.SUPABASE_URL);
+  const [sbKey,setSbKey] = useState(CONFIG.SUPABASE_KEY);
+  const [pa,setPa]       = useState(CONFIG.PASS_APPROVER);
+  const [pf,setPf]       = useState(CONFIG.PASS_FINANCE);
+  const [saved,setSaved] = useState(false);
+  const [testing,setTesting]   = useState(false);
+  const [testResult,setTestResult] = useState(null);
+
   const save = () => {
-    CONFIG.SCRIPT_URL     = url.trim();
-    CONFIG.PASS_APPROVER  = pa;
-    CONFIG.PASS_FINANCE   = pf;
-    _saveConfig({ SCRIPT_URL: url.trim(), PASS_APPROVER: pa, PASS_FINANCE: pf });
+    CONFIG.SUPABASE_URL  = sbUrl.trim();
+    CONFIG.SUPABASE_KEY  = sbKey.trim();
+    CONFIG.PASS_APPROVER = pa;
+    CONFIG.PASS_FINANCE  = pf;
+    _saveConfig({ SUPABASE_URL:sbUrl.trim(), SUPABASE_KEY:sbKey.trim(), PASS_APPROVER:pa, PASS_FINANCE:pf });
     setSaved(true); setTimeout(()=>setSaved(false),2500);
     if (onSave) onSave();
   };
+
+  const testConn = async () => {
+    if (!sbUrl||!sbKey) { setTestResult("✗ Isi URL dan Key dulu"); return; }
+    setTesting(true); setTestResult(null);
+    try {
+      const r = await fetch(sbUrl.trim()+"/rest/v1/transactions?select=id&limit=1",{
+        headers:{"apikey":sbKey.trim(),"Authorization":"Bearer "+sbKey.trim()}
+      });
+      setTestResult(r.ok||r.status===406 ? "✓ Terhubung ke Supabase!" : "✗ Error "+r.status+" — cek URL dan Key");
+    } catch(e) { setTestResult("✗ Gagal: "+e.message); }
+    setTesting(false);
+  };
+
   return (
     <div>
       <div className="card mb4">
-        <div className="ch"><h3>Koneksi Google Sheets</h3></div>
+        <div className="ch"><h3>Koneksi Supabase</h3></div>
         <div className="cb">
-          <div className="al ab mb4"><Ic n="settings" s={14} c="#2563eb"/><span>Isi URL Apps Script agar data karyawan langsung tersimpan ke Google Sheets secara otomatis.</span></div>
-          <div className="fg mb4">
-            <label className="fl">Apps Script Web App URL</label>
-            <input value={url} onChange={e=>setUrl(e.target.value)} placeholder="https://script.google.com/macros/s/xxxxx/exec"/>
-            <p style={{fontSize:11,color:"var(--i3)",marginTop:4}}>Dari: Google Sheets → Extensions → Apps Script → Deploy → salin URL</p>
+          <div className="al ab mb4"><Ic n="settings" s={14} c="#2563eb"/><span>Isi Project URL dan Anon Key dari Supabase agar data tersimpan ke database secara real-time.</span></div>
+          <div className="fg mb3">
+            <label className="fl">Supabase Project URL</label>
+            <input value={sbUrl} onChange={e=>setSbUrl(e.target.value)} placeholder="https://xxxx.supabase.co"/>
+            <p style={{fontSize:11,color:"var(--i3)",marginTop:4}}>Supabase Dashboard → Project Settings → API → Project URL</p>
           </div>
-          <div style={{padding:"10px 13px",background:"var(--ln2)",borderRadius:"var(--r2)",border:"1px solid var(--ln)"}}>
+          <div className="fg mb3">
+            <label className="fl">Supabase Anon Key</label>
+            <input value={sbKey} onChange={e=>setSbKey(e.target.value)} placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."/>
+            <p style={{fontSize:11,color:"var(--i3)",marginTop:4}}>Supabase Dashboard → Project Settings → API → anon public</p>
+          </div>
+          <div style={{display:"flex",gap:9,alignItems:"center",marginBottom:4}}>
+            <button className="btn bo sm" onClick={testConn} disabled={testing}>
+              {testing ? "Testing..." : "🔌 Test Koneksi"}
+            </button>
+            {testResult && <span style={{fontSize:12,fontWeight:700,color:testResult.startsWith("✓")?"var(--gn)":"var(--rd)"}}>{testResult}</span>}
+          </div>
+          <div style={{padding:"10px 13px",background:"var(--ln2)",borderRadius:"var(--r2)",border:"1px solid var(--ln)",marginTop:8}}>
             <p style={{fontSize:11,fontWeight:700,color:"var(--i3)",marginBottom:3}}>STATUS</p>
-            {url.trim()
-              ? <span style={{color:"var(--gn)",fontWeight:700,fontSize:13}}>✓ Terhubung ke Google Sheets — data tersimpan otomatis</span>
-              : <span style={{color:"var(--am)",fontWeight:700,fontSize:13}}>⚠️ Belum terhubung — data hanya tersimpan sementara (hilang saat refresh)</span>
+            {isReady()
+              ? <span style={{color:"var(--gn)",fontWeight:700,fontSize:13}}>✓ Supabase terhubung — data real-time</span>
+              : <span style={{color:"var(--am)",fontWeight:700,fontSize:13}}>⚠️ Belum terhubung — isi URL dan Key di atas</span>
             }
           </div>
         </div>
@@ -922,7 +1060,7 @@ function SettingsPage({ onSave }) {
       <div className="card">
         <div className="ch"><h3>Password Login</h3></div>
         <div className="cb">
-          <div className="al aw mb4"><Ic n="alert" s={14} c="#d97706"/><span>Ganti password default sebelum dibagikan ke tim! Password tersimpan sementara di browser.</span></div>
+          <div className="al aw mb4"><Ic n="alert" s={14} c="#d97706"/><span>Ganti password default sebelum dibagikan ke tim!</span></div>
           <div className="fg fg2 mb4">
             <div>
               <label className="fl">Password Approver</label>
@@ -980,7 +1118,7 @@ function EditForm({ trx, user, onSave, onCancel }) {
       amount:      total,
       categories:  f.items.map(it=>({cat:it.cat, amt:parseFloat(it.amt)||0})),
     };
-    if (CONFIG.SCRIPT_URL) await API.editData(trx.id, updated);
+    if (isReady()) await API.editData(trx.id, updated);
     else await new Promise(r=>setTimeout(r,400));
     setBusy(false);
     onSave(updated);
@@ -1070,7 +1208,7 @@ function DetailModal({ trx, user, onClose, onAction, onEdit }) {
   const act = async (action, n) => {
     setBusy(true);
     const sm = {approve:"approved",reject:"rejected",process:"processing",pay:"awaiting_oer"};
-    if (CONFIG.SCRIPT_URL) {
+    if (isReady()) {
       await API.update(trx.id, sm[action]||action, n);
     } else {
       await new Promise(r=>setTimeout(r,400));
@@ -1078,11 +1216,14 @@ function DetailModal({ trx, user, onClose, onAction, onEdit }) {
     setBusy(false);
     onAction(trx.id, action, n);
   };
+  const [norek, setNorek] = useState("");
   const settle = async () => {
     setBusy(true);
-    if (CONFIG.SCRIPT_URL) await API.update(trx.id, "settled", note);
+    const settleNote = note + (norek ? ` | Rek: ${norek}` : "");
+    if (isReady()) await API.settle(trx.id, settleNote);
     else await new Promise(r=>setTimeout(r,400));
-    setBusy(false); onAction(trx.id, "settle", note);
+    setBusy(false);
+    onAction(trx.id, "settle", settleNote);
   };
   // OER submission state (for employee submitting OER against CA)
   const [oerItems, setOerItems] = useState(OER_CATS.map(cat=>({cat,amt:""})));
@@ -1099,7 +1240,7 @@ function DetailModal({ trx, user, onClose, onAction, onEdit }) {
       oerCategories: oerItems.filter(it=>parseFloat(it.amt)>0).map(it=>({cat:it.cat,amt:parseFloat(it.amt)})),
       oerNote, oerDate: today(),
     };
-    if (CONFIG.SCRIPT_URL) await API.submitOer(trx.id, oerData);
+    if (isReady()) await API.submitOer(trx.id, oerData, trx.amount);
     else await new Promise(r=>setTimeout(r,400));
     setBusy(false);
     onAction(trx.id, "oer_submitted", oerData);
@@ -1204,6 +1345,11 @@ function DetailModal({ trx, user, onClose, onAction, onEdit }) {
                         {rp(Math.abs(rc.selisih))}
                       </span>
                     </div>
+                    {trx.financeNote&&trx.settled&&(
+                      <div style={{marginTop:8,padding:"7px 10px",background:"var(--ln2)",borderRadius:6,fontSize:11,color:"var(--i3)"}}>
+                        📋 {trx.financeNote}
+                      </div>
+                    )}
                     {trx.oerCategories&&trx.oerCategories.length>0&&(
                       <details style={{marginTop:10}}>
                         <summary style={{fontSize:11,color:"var(--i3)",cursor:"pointer"}}>Lihat rincian OER</summary>
@@ -1293,6 +1439,12 @@ function DetailModal({ trx, user, onClose, onAction, onEdit }) {
                             <span>{oerTotal>trx.amount?"Perusahaan bayar kamu":oerTotal<trx.amount?"Kamu kembalikan":"Lunas pas ✓"}</span>
                             <span>{rp(Math.abs(oerTotal-trx.amount))}</span>
                           </div>
+                          {oerTotal<trx.amount&&oerTotal>0&&(
+                            <div style={{marginTop:8,padding:"8px 10px",background:"#ede9fe",borderRadius:6,border:"1px solid #c4b5fd"}}>
+                              <p style={{fontSize:10.5,fontWeight:800,color:"#4c1d95",marginBottom:2}}>📌 Transfer kembalian ke:</p>
+                              <p style={{fontSize:12,fontWeight:700,color:"#4c1d95",fontFamily:"monospace"}}>489-988-9999 a.n. Satya Langgeng Sentosa (BCA)</p>
+                            </div>
+                          )}
                         </div>
                       )}
                       <textarea value={oerNote} onChange={e=>setOerNote(e.target.value)} placeholder="Catatan OER (opsional)..." rows={2} style={{marginBottom:9}}/>
@@ -1315,13 +1467,35 @@ function DetailModal({ trx, user, onClose, onAction, onEdit }) {
                     color:rc.isKurang?"#1e40af":rc.isLebih?"#7c3aed":"#059669"}}>
                     {rc.isKurang?`Transfer ${rp(Math.abs(rc.selisih))} ke ${trx.submitter}`:rc.isLebih?`Terima ${rp(Math.abs(rc.selisih))} dari ${trx.submitter}`:`Selisih Rp 0 — langsung konfirmasi`}
                   </p>
+
+                  {/* Kurang bayar: input norek karyawan */}
+                  {rc.isKurang && (
+                    <div style={{marginBottom:10}}>
+                      <label style={{fontSize:11,fontWeight:700,color:"#1e3a8a",display:"block",marginBottom:4}}>
+                        No. Rekening Karyawan <span style={{color:"var(--rd)"}}>*</span>
+                      </label>
+                      <input value={norek} onChange={e=>setNorek(e.target.value)}
+                        placeholder="Contoh: 1234-5678-9012 BCA a.n. Nama"
+                        style={{marginBottom:0,borderColor:"#93c5fd"}}/>
+                    </div>
+                  )}
+
+                  {/* Lebih bayar: info rekening perusahaan */}
+                  {rc.isLebih && (
+                    <div style={{marginBottom:10,padding:"10px 12px",background:"#ede9fe",borderRadius:"var(--r3)",border:"1px solid #c4b5fd"}}>
+                      <p style={{fontSize:11,fontWeight:800,color:"#4c1d95",marginBottom:4}}>📌 Karyawan transfer kembalian ke:</p>
+                      <p style={{fontSize:13,fontWeight:700,color:"#4c1d95",fontFamily:"monospace"}}>489-988-9999 a.n. Satya Langgeng Sentosa (BCA)</p>
+                    </div>
+                  )}
+
                   <textarea value={note} onChange={e=>setNote(e.target.value)}
                     placeholder={rc.isKurang?"No. referensi transfer...":rc.isLebih?"Konfirmasi penerimaan kembalian...":"Catatan settlement..."}
                     rows={2} style={{marginBottom:9}}/>
-                  <button className="btn bg" onClick={settle} disabled={busy}>
+                  <button className="btn bg" onClick={settle} disabled={busy||(rc.isKurang&&!norek)}>
                     {busy?<span className="sp2"/>:<Ic n="check" s={13}/>}
                     {rc.isKurang?"Konfirmasi Sudah Transfer":rc.isLebih?"Konfirmasi Sudah Diterima":"Konfirmasi Lunas"}
                   </button>
+                  {rc.isKurang&&!norek&&<p style={{fontSize:10.5,color:"var(--rd)",marginTop:5}}>* Isi nomor rekening karyawan dulu</p>}
                 </div>
               )}
 
@@ -1353,7 +1527,7 @@ export default function App() {
 
   const handleLogin = async (u) => {
     setUser(u);
-    if (CONFIG.SCRIPT_URL) {
+    if (isReady()) {
       setLoading(true);
       const res = await API.getAll();
       if (res?.data?.length) setData(res.data.map(d=>isOverdue(d)?{...d,status:"overdue"}:d));
@@ -1366,14 +1540,14 @@ export default function App() {
   const showToast = (msg, type="ok") => { setToast({msg,type}); setTimeout(()=>setToast(null),3000); };
 
   const reloadData = async () => {
-    if (!CONFIG.SCRIPT_URL) return;
-    const res = await API.getAll();
-    if (res?.data?.length) setData(res.data.map(d=>isOverdue(d)?{...d,status:"overdue"}:d));
+    if (!isReady()) return;
+    const rows = await API.getAll();
+    if (rows?.length) setData(rows.map(d=>isOverdue(d)?{...d,status:"overdue"}:d));
   };
 
   // Auto-reload saat user balik ke browser tab / buka app lagi dari background
   useEffect(() => {
-    if (!CONFIG.SCRIPT_URL) return;
+    if (!isReady()) return;
     const onVisible = () => { if (document.visibilityState === "visible") reloadData(); };
     document.addEventListener("visibilitychange", onVisible);
     return () => document.removeEventListener("visibilitychange", onVisible);
@@ -1381,7 +1555,7 @@ export default function App() {
 
   // Polling setiap 30 detik — semua user dapat data terbaru tanpa harus refresh manual
   useEffect(() => {
-    if (!CONFIG.SCRIPT_URL) return;
+    if (!isReady()) return;
     const timer = setInterval(reloadData, 30000);
     return () => clearInterval(timer);
   }, []);
@@ -1414,7 +1588,7 @@ export default function App() {
     showToast(msgs[action]||"Berhasil");
     setSelId(null);
     // Sync dari Sheets 1.5 detik setelah aksi — pastikan data konsisten
-    if (CONFIG.SCRIPT_URL) setTimeout(reloadData, 1500);
+    if (isReady()) setTimeout(reloadData, 1500);
   };
 
   const handleEdit = (updated) => {
@@ -1474,12 +1648,12 @@ export default function App() {
             <button className="btn bo sm" onClick={()=>setSideOpen(o=>!o)}><Ic n="menu" s={15}/></button>
             <h1 className="bt">{TITLES[page]||"Dashboard"}</h1>
             <div className="br">
-              <span className={`cs ${CONFIG.SCRIPT_URL?"cs-ok":"cs-no"}`}>
-                <span style={{width:6,height:6,borderRadius:"50%",background:CONFIG.SCRIPT_URL?"var(--gn)":"var(--am)",display:"inline-block"}}/>
-                {CONFIG.SCRIPT_URL?"Sheets ✓":"Lokal"}
+              <span className={`cs ${isReady()?"cs-ok":"cs-no"}`}>
+                <span style={{width:6,height:6,borderRadius:"50%",background:isReady()?"var(--gn)":"var(--am)",display:"inline-block"}}/>
+                {isReady()?"Supabase ✓":"Tidak terhubung"}
               </span>
               {user.role==="employee"&&page!=="submit"&&<button className="btn bp sm" onClick={()=>nav("submit")}><Ic n="plus" s={13}/>Ajukan</button>}
-              {CONFIG.SCRIPT_URL&&<button className="btn bo sm" title="Refresh data" onClick={()=>{setLoading(true);API.getAll().then(r=>{if(r?.data?.length)setData(r.data);setLoading(false);});}}><Ic n="refresh" s={13}/></button>}
+              {isReady()&&<button className="btn bo sm" title="Refresh data" onClick={()=>{setLoading(true);API.getAll().then(r=>{if(r?.data?.length)setData(r.data);setLoading(false);});}}><Ic n="refresh" s={13}/></button>}
             </div>
           </div>
 
