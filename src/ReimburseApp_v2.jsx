@@ -92,12 +92,11 @@ const API = {
   async post(action, extra={}) {
     if (!CONFIG.SCRIPT_URL) return null;
     try {
-      const body = JSON.stringify({ action, ...extra });
-      const r = await fetch(CONFIG.SCRIPT_URL, {
-        method:"POST",
-        redirect:"follow",
-        body,
-      });
+      // Kirim via URL query string — paling reliable untuk Apps Script
+      // Apps Script kadang redirect POST→GET, payload di query string selalu terbaca
+      const payload = encodeURIComponent(JSON.stringify({ action, ...extra }));
+      const url = CONFIG.SCRIPT_URL + "?payload=" + payload;
+      const r = await fetch(url, { method:"GET", redirect:"follow" });
       const txt = await r.text();
       try { return JSON.parse(txt); }
       catch { console.error("Apps Script response:", txt); return null; }
