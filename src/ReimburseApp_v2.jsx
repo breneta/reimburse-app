@@ -12,7 +12,6 @@ const _cfg = _loadConfig();
 const CONFIG = {
   SUPABASE_URL:  _cfg.SUPABASE_URL  || "",
   SUPABASE_KEY:  _cfg.SUPABASE_KEY  || "",
-  PASS_APPROVER: _cfg.PASS_APPROVER || "approver123",
   PASS_FINANCE:  _cfg.PASS_FINANCE  || "finance123",
   PASS_ADMIN_LK: _cfg.PASS_ADMIN_LK || "adminlk123",
   PASS_ADMIN_JKT:_cfg.PASS_ADMIN_JKT|| "adminjkt123",
@@ -525,7 +524,7 @@ function LoginScreen({ onLogin }) {
   const [regPass2,setRegPass2] = useState("");
 
   // staff fields
-  const [role,setRole]         = useState("approver");
+  const [role,setRole]         = useState("admin_lk");
   const [staffPass,setStaffPass]=useState("");
 
   const clr = () => setErr("");
@@ -589,10 +588,9 @@ function LoginScreen({ onLogin }) {
     }
   };
 
-  // ── Login staff (approver / finance / admin / ga) ─────────
+  // ── Login staff (admin / finance / admin_lk / admin_jkt / ga) ─────────
   const doStaff = () => {
     const passMap = {
-      approver: CONFIG.PASS_APPROVER,
       finance:  CONFIG.PASS_FINANCE,
       admin_lk: CONFIG.PASS_ADMIN_LK,
       admin_jkt:CONFIG.PASS_ADMIN_JKT,
@@ -601,7 +599,6 @@ function LoginScreen({ onLogin }) {
     const correct = passMap[role];
     if (staffPass !== correct) return setErr("Password salah!");
     const infoMap = {
-      approver:  { name:"Approver",    dept:"Management", avatar:"AP" },
       finance:   { name:"Finance",     dept:"Finance",    avatar:"FN" },
       admin_lk:  { name:"Admin LK",    dept:"Admin",      avatar:"AL" },
       admin_jkt: { name:"Admin Jakarta",dept:"Admin",     avatar:"AJ" },
@@ -625,7 +622,7 @@ function LoginScreen({ onLogin }) {
 
         {/* Tabs: Karyawan vs Staff */}
         <div className="l-tabs">
-          {[["karyawan","👤  Karyawan"],["staff","🔐  Staff / Admin"]].map(([v,l])=>(
+          {[["karyawan","👤  Karyawan"],["staff","🔐  Admin / GA"]].map(([v,l])=>(
             <button key={v} className={`l-tab${tab===v?" on":""}`}
               onClick={()=>{setTab(v);setErr("");setMode("login");}}>
               {l}
@@ -716,7 +713,6 @@ function LoginScreen({ onLogin }) {
             <div className="l-fld">
               <label>Login sebagai</label>
               <select value={role} onChange={e=>{setRole(e.target.value);clr();}}>
-                <option value="approver">✅  Approver / Atasan</option>
                 <option value="admin_lk">📦  Admin Luar Kota</option>
                 <option value="admin_jkt">🏢  Admin Jakarta</option>
                 <option value="ga">🗂  GA</option>
@@ -731,9 +727,8 @@ function LoginScreen({ onLogin }) {
             <button className="l-btn" onClick={doStaff}>Masuk →</button>
             <div className="l-note">
               🔑 Password default:<br/>
-              Approver: <strong>approver123</strong> | Finance: <strong>finance123</strong><br/>
-              Admin LK: <strong>adminlk123</strong> | Admin JKT: <strong>adminjkt123</strong><br/>
-              GA: <strong>ga123</strong><br/><br/>
+              Finance: <strong>finance123</strong> | GA: <strong>ga123</strong><br/>
+              Admin LK: <strong>adminlk123</strong> | Admin JKT: <strong>adminjkt123</strong><br/><br/>
               Ganti di menu <strong>Pengaturan</strong> (login Finance).
             </div>
           </>
@@ -764,13 +759,13 @@ function Dashboard({ data, user, nav }) {
           <p style={{fontSize:10,fontWeight:800,letterSpacing:".12em",textTransform:"uppercase",color:"var(--tl2)",marginBottom:4}}>Selamat datang</p>
           <h2 style={{fontSize:20,fontWeight:800,letterSpacing:"-.01em",marginBottom:3}}>{user.name}</h2>
           <p style={{fontSize:12.5,color:"rgba(255,255,255,.5)"}}>
-            {user.dept} {user.area ? `· ${user.area}` : ""} · {user.role==="finance"?"Finance":user.role==="approver"?"Approver / Atasan":user.role==="admin_lk"?"Admin Luar Kota":user.role==="admin_jkt"?"Admin Jakarta":user.role==="ga"?"GA":"Karyawan"}
+            {user.dept} {user.area ? `· ${user.area}` : ""} · {user.role==="finance"?"Finance":user.role==="admin_lk"?"Admin Luar Kota":user.role==="admin_jkt"?"Admin Jakarta":user.role==="ga"?"GA":"Karyawan"}
           </p>
         </div>
       </div>
 
       {overdue.length>0 && <div className="al ae mb4"><Ic n="alert" s={14} c="#dc2626"/><span><strong>{overdue.length} CA Terlambat</strong> — melewati batas 5 hari kerja!</span></div>}
-      {user.role==="approver" && pending.length>0 && <div className="al aw mb4"><Ic n="clock" s={14} c="#d97706"/><span><strong>{pending.length} pengajuan</strong> menunggu persetujuan Anda.</span></div>}
+      {user.role==="admin_lk" && data.filter(d=>d.status==="pending").length>0 && <div className="al aw mb4"><Ic n="clock" s={14} c="#d97706"/><span><strong>{data.filter(d=>d.status==="pending").length} pengajuan</strong> menunggu dokumen diterima.</span></div>}
       {user.role==="finance" && approved.length>0 && <div className="al ab mb4"><Ic n="money" s={14} c="#2563eb"/><span><strong>{approved.length} pengajuan</strong> sudah disetujui, siap diproses.</span></div>}
 
       <div className="sg">
@@ -1442,7 +1437,6 @@ function MonitorPage({ data, onSel }) {
 function SettingsPage({ onSave }) {
   const [sbUrl,setSbUrl] = useState(CONFIG.SUPABASE_URL);
   const [sbKey,setSbKey] = useState(CONFIG.SUPABASE_KEY);
-  const [pa,setPa]       = useState(CONFIG.PASS_APPROVER);
   const [pf,setPf]       = useState(CONFIG.PASS_FINANCE);
   const [palk,setPalk]   = useState(CONFIG.PASS_ADMIN_LK);
   const [pajkt,setPajkt] = useState(CONFIG.PASS_ADMIN_JKT);
@@ -1454,12 +1448,11 @@ function SettingsPage({ onSave }) {
   const save = () => {
     CONFIG.SUPABASE_URL   = sbUrl.trim();
     CONFIG.SUPABASE_KEY   = sbKey.trim();
-    CONFIG.PASS_APPROVER  = pa;
     CONFIG.PASS_FINANCE   = pf;
     CONFIG.PASS_ADMIN_LK  = palk;
     CONFIG.PASS_ADMIN_JKT = pajkt;
     CONFIG.PASS_GA        = pga;
-    _saveConfig({ SUPABASE_URL:sbUrl.trim(), SUPABASE_KEY:sbKey.trim(), PASS_APPROVER:pa, PASS_FINANCE:pf, PASS_ADMIN_LK:palk, PASS_ADMIN_JKT:pajkt, PASS_GA:pga });
+    _saveConfig({ SUPABASE_URL:sbUrl.trim(), SUPABASE_KEY:sbKey.trim(), PASS_FINANCE:pf, PASS_ADMIN_LK:palk, PASS_ADMIN_JKT:pajkt, PASS_GA:pga });
     setSaved(true); setTimeout(()=>setSaved(false),2500);
     if (onSave) onSave();
   };
@@ -1513,14 +1506,14 @@ function SettingsPage({ onSave }) {
           <div className="al aw mb4"><Ic n="alert" s={14} c="#d97706"/><span>Ganti password default sebelum dibagikan ke tim!</span></div>
           <div className="fg fg2 mb4">
             <div>
-              <label className="fl">Password Approver</label>
-              <input value={pa} onChange={e=>setPa(e.target.value)} placeholder="approver123"/>
-              <p style={{fontSize:11,color:"var(--i3)",marginTop:3}}>Default: approver123</p>
-            </div>
-            <div>
               <label className="fl">Password Finance</label>
               <input value={pf} onChange={e=>setPf(e.target.value)} placeholder="finance123"/>
               <p style={{fontSize:11,color:"var(--i3)",marginTop:3}}>Default: finance123</p>
+            </div>
+            <div>
+              <label className="fl">Password GA</label>
+              <input value={pga} onChange={e=>setPga(e.target.value)} placeholder="ga123"/>
+              <p style={{fontSize:11,color:"var(--i3)",marginTop:3}}>Default: ga123</p>
             </div>
           </div>
           <div className="fg fg2 mb4">
@@ -1534,11 +1527,6 @@ function SettingsPage({ onSave }) {
               <input value={pajkt} onChange={e=>setPajkt(e.target.value)} placeholder="adminjkt123"/>
               <p style={{fontSize:11,color:"var(--i3)",marginTop:3}}>Default: adminjkt123</p>
             </div>
-          </div>
-          <div className="fg" style={{maxWidth:300,marginBottom:16}}>
-            <label className="fl">Password GA</label>
-            <input value={pga} onChange={e=>setPga(e.target.value)} placeholder="ga123"/>
-            <p style={{fontSize:11,color:"var(--i3)",marginTop:3}}>Default: ga123</p>
           </div>
           <div style={{display:"flex",justifyContent:"flex-end",gap:9,alignItems:"center"}}>
             {saved && <span style={{color:"var(--gn)",fontWeight:700,fontSize:13}}>✓ Disimpan!</span>}
@@ -1844,10 +1832,7 @@ function DetailModal({ trx, user, onClose, onAction, onEdit }) {
   const [note,setNote]   = useState("");
   const busy = false; // actions are now synchronous/optimistic
   const [editing,setEditing] = useState(false);
-  const isApp = user.role==="approver";
   const isFin = user.role==="finance";
-  const isAdminLK  = user.role==="admin_lk";
-  const isAdminJKT = user.role==="admin_jkt";
   const isGA  = user.role==="ga";
   const isOwner = user.role==="employee" && trx.submitter===user.name;
   const canEdit = (isFin || isGA || (isOwner && trx.status!=="paid" && trx.status!=="rejected"));
@@ -1975,16 +1960,6 @@ function DetailModal({ trx, user, onClose, onAction, onEdit }) {
                 </div>
               ))}</div>
 
-              {isApp&&trx.status==="pending"&&(
-                <div style={{marginTop:16,padding:14,background:"var(--ln2)",borderRadius:"var(--r2)",border:"1px solid var(--ln)"}}>
-                  <p style={{fontSize:13,fontWeight:700,marginBottom:9}}>Tindakan Approval</p>
-                  <textarea value={note} onChange={e=>setNote(e.target.value)} placeholder="Catatan (opsional)..." rows={2} style={{marginBottom:9}}/>
-                  <div style={{display:"flex",gap:8}}>
-                    <button className="btn bg" onClick={()=>act("approve",note||"Disetujui")} disabled={busy}>{busy?<span className="sp2"/>:<Ic n="check" s={13}/>}Setujui</button>
-                    <button className="btn br2" onClick={()=>act("reject",note||"Ditolak")} disabled={busy}><Ic n="x" s={13}/>Tolak</button>
-                  </div>
-                </div>
-              )}
               {isFin&&["approved","doc_complete"].includes(trx.status)&&(
                 <div style={{marginTop:16,padding:14,background:"var(--ln2)",borderRadius:"var(--r2)",border:"1px solid var(--ln)"}}>
                   <p style={{fontSize:13,fontWeight:700,marginBottom:9}}>Mulai Proses</p>
@@ -2241,14 +2216,12 @@ export default function App() {
   };
   const nav = (p, id) => { if (id) setSelId(id); setPage(p); setSideOpen(false); };
 
-  const pCt = data.filter(d=>d.status==="pending").length;
-  const aCt = data.filter(d=>d.status==="approved").length;
+  const aCt = data.filter(d=>["approved","doc_complete"].includes(d.status)).length;
   const oCt = data.filter(d=>d.status==="overdue").length;
   const sel = data.find(d=>d.id===selId);
 
   const NAV = {
     employee: [{id:"dashboard",ic:"home",lb:"Dashboard"},{id:"submit",ic:"plus",lb:"Ajukan Baru"},{id:"list",ic:"list",lb:"Pengajuan Saya"}],
-    approver: [{id:"dashboard",ic:"home",lb:"Dashboard"},{id:"approval",ic:"check",lb:"Antrian Approval",bd:pCt},{id:"list",ic:"list",lb:"Semua Pengajuan"}],
     admin_lk: [{id:"dashboard",ic:"home",lb:"Dashboard"},{id:"admin_lk_queue",ic:"check",lb:"Antrian Dokumen",bd:data.filter(d=>d.status==="pending").length||null},{id:"list",ic:"list",lb:"Semua Pengajuan"}],
     admin_jkt:[{id:"dashboard",ic:"home",lb:"Dashboard"},{id:"admin_jkt_queue",ic:"check",lb:"Antrian Jakarta",bd:data.filter(d=>d.status==="doc_sent_jkt").length||null},{id:"list",ic:"list",lb:"Semua Pengajuan"}],
     ga:       [{id:"dashboard",ic:"home",lb:"Dashboard"},{id:"ga_queue",ic:"check",lb:"Antrian GA",bd:data.filter(d=>d.status==="doc_received_jkt").length||null},{id:"list",ic:"list",lb:"Semua Pengajuan"}],
@@ -2313,7 +2286,6 @@ export default function App() {
                 {page==="dashboard" && <Dashboard data={data} user={user} nav={nav}/>}
                 {page==="submit"    && <SubmitPage user={user} onSubmit={handleSubmit} data={data}/>}
                 {page==="list"      && <ListPage data={data} user={user} onSel={id=>setSelId(id)}/>}
-                {page==="approval"  && <ApprovalPage data={data} onAction={handleAction} onSel={(id)=>{setSelId(id);}} user={user}/>}
                 {page==="admin_lk_queue"  && <AdminLKQueue data={data} onAction={handleAction} onSel={id=>setSelId(id)} user={user}/>}
                 {page==="admin_jkt_queue" && <AdminJKTQueue data={data} onAction={handleAction} onSel={id=>setSelId(id)} user={user}/>}
                 {page==="ga_queue"        && <GAQueue data={data} onAction={handleAction} onSel={id=>setSelId(id)} user={user}/>}
