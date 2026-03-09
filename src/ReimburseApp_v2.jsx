@@ -143,6 +143,9 @@ const SB = {
       oerAmount:r.oer_amount||0, oerCategories:r.oer_categories||[],
       oerNote:r.oer_note||"", oerDate:r.oer_date||"",
       caRef:r.ca_ref||"",
+      bankVoucherNo:r.bank_voucher_no||"",
+      adminLkName:r.admin_lk_name||"", adminJktName:r.admin_jkt_name||"",
+      gaNote:r.ga_note||"", area:r.area||"Jakarta",
     }));
   },
 
@@ -163,9 +166,10 @@ const SB = {
     return SB.req("PATCH","transactions",patch,{"id":"eq."+id});
   },
 
-  async updateStatus(id, status, note) {
+  async updateStatus(id, status, note, voucherNo) {
     const patch = { status };
     if (note) patch.finance_note = note;
+    if (voucherNo) patch.bank_voucher_no = voucherNo;
     if (status==="awaiting_oer"||status==="paid") patch.settled_date = today();
     return SB.update(id, patch);
   },
@@ -267,7 +271,7 @@ const SB = {
 const API = {
   getAll:      ()       => SB.getAll(),
   create:      (data)   => SB.create(data),
-  update:      (id,s,n) => SB.updateStatus(id,s,n),
+  update:      (id,s,n,v) => SB.updateStatus(id,s,n,v),
   settle:      (id,n)   => SB.settle(id,n),
   submitOer:   (id,d,ca)=> SB.submitOer(id,d,ca),
   registerAcc: (acc)    => SB.registerAcc(acc),
@@ -1281,13 +1285,42 @@ function GAQueue({ data, onAction, onSel, user }) {
 // ═══════════════════════════════════════════════════════════════
 // MONITOR PAGE
 // ═══════════════════════════════════════════════════════════════
-function MonitorPage({ data, onSel }) {
+function MonitorPage({ data, onSel, onAction }) {
+  const [sel, setSel]           = useState({});
+  const [bulkVoucher, setBulkVoucher] = useState("");
+  const [bulkNote, setBulkNote] = useState("");
   const totalRp = data.reduce((a,d)=>a+d.amount,0);
   const paidRp  = data.filter(d=>d.status==="paid").reduce((a,d)=>a+d.amount,0);
   const pct = totalRp?Math.round(paidRp/totalRp*100):0;
   const overdue = data.filter(d=>d.status==="overdue");
   const caOut   = data.filter(d=>d.type==="cash_advance"&&!d.settled&&!["rejected","settled"].includes(d.status));
   const needSettle = data.filter(d=>d.type==="cash_advance"&&["kurang_bayar","lebih_bayar"].includes(d.status)&&!d.settled);
+
+  const actionable = data.filter(d=>["doc_complete","approved","processing"].includes(d.status));
+  const selIds = Object.keys(sel).filter(k=>sel[k]);
+  const selDocs = selIds.filter(k=>actionable.find(d=>d.id===k));
+  const selProcessable = selDocs.filter(k=>["doc_complete","approved"].includes(actionable.find(d=>d.id===k)?.status));
+  const selPayable = selDocs.filter(k=>actionable.find(d=>d.id===k)?.status==="processing");
+
+  const doBulkProcess = () => {
+    selProcessable.forEach(id => {
+      const trx = data.find(d=>d.id===id);
+      onAction(id, "process", bulkNote, trx?.type, bulkVoucher);
+      if (isReady()) API.update(id, "processing", bulkNote, bulkVoucher).catch(()=>{});
+    });
+    setSel({});
+  };
+
+  const doBulkPay = () => {
+    selPayable.forEach(id => {
+      const trx = data.find(d=>d.id===id);
+      const supaStatus = trx?.type==="cash_advance" ? "awaiting_oer" : "paid";
+      onAction(id, "pay", bulkNote, trx?.type, bulkVoucher||trx?.bankVoucherNo||"");
+      if (isReady()) API.update(id, supaStatus, bulkNote, bulkVoucher||trx?.bankVoucherNo||"").catch(()=>{});
+    });
+    setSel({});
+  };
+
   return (
     <div>
       {overdue.length>0 && <div className="al ae mb4"><Ic n="alert" s={14} c="#dc2626"/><div><strong>{overdue.length} CA Terlambat:</strong>{overdue.map(d=><div key={d.id} style={{marginTop:3,fontSize:11.5}}>• {d.id} – {d.submitter} ({d.dept})</div>)}</div></div>}
@@ -1314,21 +1347,78 @@ function MonitorPage({ data, onSel }) {
           </div>
         ))}
       </div>
-      <div className="g2">
-        <div className="card">
-          <div className="ch"><h3>Perlu Ditindak</h3></div>
-          <div className="tw"><table>
-            <thead><tr><th>ID</th><th>Pemohon</th><th>Jumlah</th><th>Status</th></tr></thead>
-            <tbody>{data.filter(d=>["approved","processing"].includes(d.status)).map(d=>(
-              <tr key={d.id} onClick={()=>onSel(d.id)}>
-                <td><span className="mono">{d.id}</span></td>
-                <td><div className="bold" style={{fontSize:13}}>{d.submitter}</div></td>
-                <td className="bold">{rp(d.amount)}</td>
-                <td><SBadge s={d.status}/></td>
-              </tr>
-            ))}</tbody>
-          </table>{!data.some(d=>["approved","processing"].includes(d.status))&&<div className="empty" style={{padding:"20px 0"}}><p>Tidak ada yang perlu ditindak 🎉</p></div>}</div>
+
+      {/* Bulk action bar */}
+      {selDocs.length > 0 && (
+        <div className="card" style={{marginBottom:12,padding:"12px 16px",background:"var(--tlb)",border:"1px solid var(--tlbd)"}}>
+          <p style={{fontSize:13,fontWeight:700,color:"#134e4a",marginBottom:10}}>{selDocs.length} transaksi dipilih</p>
+          <div style={{display:"flex",gap:10,flexWrap:"wrap",marginBottom:10}}>
+            {selPayable.length>0 && (
+              <div style={{flex:1,minWidth:200}}>
+                <label style={{fontSize:11,fontWeight:700,color:"var(--i2)",display:"block",marginBottom:4}}>Bank Voucher No. (SAP) <span style={{color:"var(--rd)"}}>*</span></label>
+                <input value={bulkVoucher} onChange={e=>setBulkVoucher(e.target.value)} placeholder="BV-2026-00123" style={{marginBottom:0}}/>
+              </div>
+            )}
+            <div style={{flex:1,minWidth:200}}>
+              <label style={{fontSize:11,fontWeight:700,color:"var(--i2)",display:"block",marginBottom:4}}>Catatan</label>
+              <input value={bulkNote} onChange={e=>setBulkNote(e.target.value)} placeholder="Catatan (opsional)" style={{marginBottom:0}}/>
+            </div>
+          </div>
+          <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
+            {selProcessable.length>0 && (
+              <button className="btn bp sm" onClick={doBulkProcess}>
+                <Ic n="money" s={12}/>Mulai Proses {selProcessable.length}x
+              </button>
+            )}
+            {selPayable.length>0 && (
+              <button className="btn bg sm" onClick={doBulkPay} disabled={!bulkVoucher.trim()}>
+                <Ic n="check" s={12}/>Tandai Dibayar {selPayable.length}x
+              </button>
+            )}
+            {selPayable.length>0 && !bulkVoucher.trim() && <span style={{fontSize:11,color:"var(--am)"}}>⚠️ Isi Bank Voucher No. dulu</span>}
+            <button className="btn bo sm" onClick={()=>setSel({})}><Ic n="x" s={11}/>Batal</button>
+          </div>
         </div>
+      )}
+
+      {/* Tabel transaksi yang perlu ditindak */}
+      <div className="card" style={{marginBottom:16}}>
+        <div className="ch"><h3>Perlu Ditindak</h3><span style={{fontSize:12,color:"var(--i3)",fontWeight:600}}>{actionable.length} transaksi</span></div>
+        <div className="tw"><table>
+          <thead><tr>
+            <th><input type="checkbox" style={{width:"auto"}} onChange={e=>{const s={};actionable.forEach(d=>{s[d.id]=e.target.checked;});setSel(p=>({...p,...s}));}}/></th>
+            <th>ID</th><th>Pemohon</th><th>Keperluan</th><th>Jumlah</th><th>Bank Voucher</th><th>Status</th><th>Aksi</th>
+          </tr></thead>
+          <tbody>{actionable.map(d=>(
+            <tr key={d.id}>
+              <td onClick={e=>e.stopPropagation()}><input type="checkbox" style={{width:"auto"}} checked={!!sel[d.id]} onChange={e=>setSel(p=>({...p,[d.id]:e.target.checked}))}/></td>
+              <td style={{cursor:"pointer"}} onClick={()=>onSel(d.id)}><span className="mono">{d.id}</span></td>
+              <td style={{cursor:"pointer"}} onClick={()=>onSel(d.id)}><div className="bold" style={{fontSize:13}}>{d.submitter}</div><div style={{fontSize:11,color:"var(--i3)"}}>{d.dept}</div></td>
+              <td style={{cursor:"pointer"}} onClick={()=>onSel(d.id)}><div className="trunc" style={{maxWidth:130}}>{d.purpose}</div></td>
+              <td className="bold" style={{cursor:"pointer"}} onClick={()=>onSel(d.id)}>{rp(d.amount)}</td>
+              <td style={{fontSize:12,fontFamily:"monospace",color:d.bankVoucherNo?"var(--tl)":"var(--i4)"}}>{d.bankVoucherNo||"—"}</td>
+              <td><SBadge s={d.status}/></td>
+              <td onClick={e=>e.stopPropagation()}>
+                {["doc_complete","approved"].includes(d.status) && (
+                  <button className="btn bp xs" onClick={()=>{
+                    onAction(d.id,"process","",d.type,"");
+                    if(isReady()) API.update(d.id,"processing","","").catch(()=>{});
+                  }}><Ic n="money" s={11}/>Proses</button>
+                )}
+                {d.status==="processing" && (
+                  <button className="btn bg xs" onClick={()=>{
+                    const supaStatus = d.type==="cash_advance"?"awaiting_oer":"paid";
+                    onAction(d.id,"pay","",d.type,d.bankVoucherNo||"");
+                    if(isReady()) API.update(d.id,supaStatus,"",d.bankVoucherNo||"").catch(()=>{});
+                  }}><Ic n="check" s={11}/>Dibayar</button>
+                )}
+              </td>
+            </tr>
+          ))}</tbody>
+        </table>{actionable.length===0&&<div className="empty" style={{padding:"20px 0"}}><p>Tidak ada yang perlu ditindak 🎉</p></div>}</div>
+      </div>
+
+      <div className="g2">
         <div className="card">
           <div className="ch"><h3>CA Outstanding ({caOut.length})</h3></div>
           <div style={{maxHeight:340,overflowY:"auto"}}>
@@ -1755,18 +1845,25 @@ function OerReconBox({ trx, rc, isFin, isOwner, onAction }) {
 // DETAIL MODAL
 // ═══════════════════════════════════════════════════════════════
 function DetailModal({ trx, user, onClose, onAction, onEdit }) {
-  const [note,setNote]   = useState("");
-  const busy = false; // actions are now synchronous/optimistic
+  const [note,setNote]       = useState("");
+  const [voucherNo,setVoucherNo] = useState(trx.bankVoucherNo||"");
+  const busy = false;
   const [editing,setEditing] = useState(false);
   const isFin = user.role==="finance";
   const isGA  = user.role==="ga";
   const isOwner = user.role==="employee" && trx.submitter===user.name;
   const canEdit = (isFin || isGA || (isOwner && trx.status!=="paid" && trx.status!=="rejected"));
 
-  const act = (action, n) => {
-    const sm = {approve:"approved",reject:"rejected",process:"processing",pay:"awaiting_oer",doc_complete:"doc_complete"};
-    onAction(trx.id, action, n);
-    if (isReady()) API.update(trx.id, sm[action]||action, n)
+  const act = (action, n, voucher) => {
+    let supabaseStatus;
+    if (action === "pay") {
+      supabaseStatus = trx.type === "cash_advance" ? "awaiting_oer" : "paid";
+    } else {
+      const sm = {approve:"approved",reject:"rejected",process:"processing",doc_complete:"doc_complete"};
+      supabaseStatus = sm[action] || action;
+    }
+    onAction(trx.id, action, n, trx.type, voucher||"");
+    if (isReady()) API.update(trx.id, supabaseStatus, n, voucher||"")
       .catch(e=>console.error("sync error:",e));
   };
   const [norek, setNorek] = useState("");
@@ -1850,6 +1947,7 @@ function DetailModal({ trx, user, onClose, onAction, onEdit }) {
                   <p style={{fontSize:10.5,fontWeight:800,color:"var(--i3)",textTransform:"uppercase",letterSpacing:".06em",marginBottom:7}}>Pemohon</p>
                   <p className="bold">{trx.submitter}</p><p style={{fontSize:12,color:"var(--i3)"}}>{trx.dept}</p>
                   <p style={{fontSize:12,color:"var(--i3)",marginTop:4}}>Admin: {trx.approverName}</p>
+                  {trx.bankVoucherNo && <p style={{fontSize:12,fontWeight:700,color:"var(--tl)",marginTop:4}}>🏦 Voucher: {trx.bankVoucherNo}</p>}
                 </div>
                 <div>
                   <p style={{fontSize:10.5,fontWeight:800,color:"var(--i3)",textTransform:"uppercase",letterSpacing:".06em",marginBottom:7}}>Perjalanan</p>
@@ -1889,15 +1987,20 @@ function DetailModal({ trx, user, onClose, onAction, onEdit }) {
               {isFin&&["approved","doc_complete"].includes(trx.status)&&(
                 <div style={{marginTop:16,padding:14,background:"var(--ln2)",borderRadius:"var(--r2)",border:"1px solid var(--ln)"}}>
                   <p style={{fontSize:13,fontWeight:700,marginBottom:9}}>Mulai Proses</p>
-                  <textarea value={note} onChange={e=>setNote(e.target.value)} placeholder="Catatan Finance..." rows={2} style={{marginBottom:9}}/>
-                  <button className="btn bp" onClick={()=>act("process",note)} disabled={busy}>{busy?<span className="sp2"/>:<Ic n="money" s={13}/>}Mulai Proses</button>
+                  <textarea value={note} onChange={e=>setNote(e.target.value)} placeholder="Catatan Finance (opsional)..." rows={2} style={{marginBottom:9}}/>
+                  <button className="btn bp" onClick={()=>act("process",note,"")} disabled={busy}>{busy?<span className="sp2"/>:<Ic n="money" s={13}/>}Mulai Proses</button>
                 </div>
               )}
               {isFin&&trx.status==="processing"&&(
                 <div style={{marginTop:16,padding:14,background:"var(--ln2)",borderRadius:"var(--r2)",border:"1px solid var(--ln)"}}>
                   <p style={{fontSize:13,fontWeight:700,marginBottom:9}}>Konfirmasi Pembayaran</p>
-                  <textarea value={note} onChange={e=>setNote(e.target.value)} placeholder="No. referensi transfer..." rows={2} style={{marginBottom:9}}/>
-                  <button className="btn bg" onClick={()=>act("pay",note)} disabled={busy}>{busy?<span className="sp2"/>:<Ic n="check" s={13}/>}Tandai Sudah Dibayar</button>
+                  <div className="fg mb3">
+                    <label className="fl" style={{fontSize:12}}>Bank Voucher No. <span style={{color:"var(--rd)",fontWeight:700}}>*</span> <span style={{color:"var(--i3)",fontWeight:400}}>(dari SAP)</span></label>
+                    <input value={voucherNo} onChange={e=>setVoucherNo(e.target.value)} placeholder="Contoh: BV-2026-00123" style={{marginBottom:0}}/>
+                  </div>
+                  <textarea value={note} onChange={e=>setNote(e.target.value)} placeholder="No. referensi transfer (opsional)..." rows={2} style={{marginBottom:9}}/>
+                  <button className="btn bg" onClick={()=>act("pay",note,voucherNo)} disabled={busy||!voucherNo.trim()}>{busy?<span className="sp2"/>:<Ic n="check" s={13}/>}Tandai Sudah Dibayar</button>
+                  {!voucherNo.trim() && <p style={{fontSize:11,color:"var(--am)",marginTop:6}}>⚠️ Isi Bank Voucher No. terlebih dahulu</p>}
                 </div>
               )}
               {/* Employee: submit OER for this CA */}
@@ -2072,7 +2175,7 @@ export default function App() {
     return () => clearInterval(timer);
   }, []);
 
-  const handleAction = (id, action, noteOrData) => {
+  const handleAction = (id, action, noteOrData, trxType, voucherNo) => {
     // Optimistic update dulu — UI langsung berubah tanpa tunggu Sheets
     setData(prev=>prev.map(d=>{
       if (d.id!==id) return d;
@@ -2099,8 +2202,8 @@ export default function App() {
       const m = {
         approve:  {status:"approved"},
         reject:   {status:"rejected",   financeNote:noteOrData},
-        process:  {status:"processing", financeNote:noteOrData},
-        pay:      {status:"awaiting_oer", settledDate:today(), financeNote:noteOrData},
+        process:  {status:"processing", financeNote:noteOrData, bankVoucherNo:voucherNo||""},
+        pay:      {status: (trxType||d.type)==="cash_advance" ? "awaiting_oer" : "paid", settledDate:today(), financeNote:noteOrData, bankVoucherNo:voucherNo||d.bankVoucherNo||""},
         settle:   {settled:true, status:"settled", settledDate:today(), financeNote:noteOrData},
       };
       return {...d, ...m[action]};
@@ -2118,7 +2221,8 @@ export default function App() {
       doc_complete:"✓ Dokumen lengkap — siap diproses Finance",
     };
     showToast(msgs[action]||"Berhasil");
-    setSelId(null);
+    // Jangan tutup modal — Finance perlu lanjut ke step berikutnya
+    if (["reject","settle","emp_confirm","emp_dispute"].includes(action)) setSelId(null);
     // Sync dari Sheets 1.5 detik setelah aksi — pastikan data konsisten
     if (isReady()) setTimeout(reloadData, 2000); // sync dari Supabase setelah action
   };
@@ -2215,7 +2319,7 @@ export default function App() {
                 {page==="admin_lk_queue"  && <AdminLKQueue data={data} onAction={handleAction} onSel={id=>setSelId(id)} user={user}/>}
                 {page==="admin_jkt_queue" && <AdminJKTQueue data={data} onAction={handleAction} onSel={id=>setSelId(id)} user={user}/>}
                 {page==="ga_queue"        && <GAQueue data={data} onAction={handleAction} onSel={id=>setSelId(id)} user={user}/>}
-                {page==="monitor"   && <MonitorPage data={data} onSel={id=>setSelId(id)}/>}
+                {page==="monitor"   && <MonitorPage data={data} onSel={id=>setSelId(id)} onAction={handleAction}/>}
                 {page==="settings"  && <SettingsPage onSave={()=>showToast("✓ Pengaturan disimpan")}/>}
                 {page==="overdue"   && (
                   <div>
