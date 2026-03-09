@@ -14,28 +14,36 @@ const CONFIG = {
   SUPABASE_KEY:  _cfg.SUPABASE_KEY  || "",
   PASS_APPROVER: _cfg.PASS_APPROVER || "approver123",
   PASS_FINANCE:  _cfg.PASS_FINANCE  || "finance123",
+  PASS_ADMIN_LK: _cfg.PASS_ADMIN_LK || "adminlk123",
+  PASS_ADMIN_JKT:_cfg.PASS_ADMIN_JKT|| "adminjkt123",
+  PASS_GA:       _cfg.PASS_GA       || "ga123",
 };
 const isReady = () => CONFIG.SUPABASE_URL && CONFIG.SUPABASE_KEY;
 
 // ═══════════════════════════════════════════════════════════════
 // CONSTANTS
 // ═══════════════════════════════════════════════════════════════
-const DEPTS = ["Marketing","Sales Dealer","Sales MO","Sales RO","RDC","Collection","Procurement","IT","Finance","GA","HR","Lainnya"];
+const DEPTS = ["Sales","Commercial","HRD","Marketing","GA","IT","Finance","Lainnya"];
+const AREAS = ["Jakarta","Surabaya","Semarang","Medan","Yogyakarta","Denpasar","Bandung","Palembang"];
 const CATS  = ["Perjalanan Dinas","Akomodasi / Hotel","Makan & Entertainment","Transportasi","Uang Saku","Komunikasi","Lain-lain"];
 const STATUS = {
-  pending:           { label:"Menunggu Approval",    color:"#92400e", bg:"#fffbeb", dot:"#f59e0b" },
-  approved:          { label:"Disetujui",             color:"#1e40af", bg:"#eff6ff", dot:"#3b82f6" },
-  processing:        { label:"Diproses Finance",     color:"#5b21b6", bg:"#f5f3ff", dot:"#8b5cf6" },
-  paid:              { label:"CA Dicairkan",          color:"#065f46", bg:"#ecfdf5", dot:"#10b981" },
-  awaiting_oer:      { label:"Menunggu OER",          color:"#854d0e", bg:"#fef9c3", dot:"#ca8a04" },
-  kurang_bayar:      { label:"Kurang Bayar ↑",        color:"#1e3a5f", bg:"#dbeafe", dot:"#3b82f6" },
-  lebih_bayar:       { label:"Lebih Bayar ↓",         color:"#4c1d95", bg:"#ede9fe", dot:"#8b5cf6" },
-  awaiting_confirm:  { label:"Menunggu Konfirmasi",   color:"#92400e", bg:"#fff7ed", dot:"#f97316" },
-  employee_confirmed:{ label:"Karyawan Setuju ✓",     color:"#065f46", bg:"#ecfdf5", dot:"#10b981" },
-  disputed:          { label:"Keberatan",             color:"#991b1b", bg:"#fef2f2", dot:"#ef4444" },
-  settled:           { label:"Lunas ✓",               color:"#065f46", bg:"#ecfdf5", dot:"#10b981" },
-  rejected:          { label:"Ditolak",               color:"#991b1b", bg:"#fef2f2", dot:"#ef4444" },
-  overdue:           { label:"CA Terlambat ⚠️",      color:"#9f1239", bg:"#fff1f2", dot:"#e11d48" },
+  pending:           { label:"Menunggu Approval",      color:"#92400e", bg:"#fffbeb", dot:"#f59e0b" },
+  doc_received_lk:   { label:"Diterima Admin LK",      color:"#1e40af", bg:"#eff6ff", dot:"#3b82f6" },
+  doc_sent_jkt:      { label:"Dikirim ke Jakarta",     color:"#5b21b6", bg:"#f5f3ff", dot:"#8b5cf6" },
+  doc_received_jkt:  { label:"Diterima Admin Jakarta", color:"#0e7490", bg:"#ecfeff", dot:"#06b6d4" },
+  doc_complete:      { label:"Dokumen Lengkap ✓",      color:"#065f46", bg:"#ecfdf5", dot:"#10b981" },
+  approved:          { label:"Disetujui",               color:"#1e40af", bg:"#eff6ff", dot:"#3b82f6" },
+  processing:        { label:"Diproses Finance",       color:"#5b21b6", bg:"#f5f3ff", dot:"#8b5cf6" },
+  paid:              { label:"CA Dicairkan",            color:"#065f46", bg:"#ecfdf5", dot:"#10b981" },
+  awaiting_oer:      { label:"Menunggu OER",            color:"#854d0e", bg:"#fef9c3", dot:"#ca8a04" },
+  kurang_bayar:      { label:"Kurang Bayar ↑",          color:"#1e3a5f", bg:"#dbeafe", dot:"#3b82f6" },
+  lebih_bayar:       { label:"Lebih Bayar ↓",           color:"#4c1d95", bg:"#ede9fe", dot:"#8b5cf6" },
+  awaiting_confirm:  { label:"Menunggu Konfirmasi",     color:"#92400e", bg:"#fff7ed", dot:"#f97316" },
+  employee_confirmed:{ label:"Karyawan Setuju ✓",       color:"#065f46", bg:"#ecfdf5", dot:"#10b981" },
+  disputed:          { label:"Keberatan",               color:"#991b1b", bg:"#fef2f2", dot:"#ef4444" },
+  settled:           { label:"Lunas ✓",                 color:"#065f46", bg:"#ecfdf5", dot:"#10b981" },
+  rejected:          { label:"Ditolak",                 color:"#991b1b", bg:"#fef2f2", dot:"#ef4444" },
+  overdue:           { label:"CA Terlambat ⚠️",        color:"#9f1239", bg:"#fff1f2", dot:"#e11d48" },
 };
 // OER categories matching real form
 const OER_CATS = [
@@ -204,6 +212,22 @@ const SB = {
     return SB.update(id, { status: "disputed", finance_note: reason||"Karyawan keberatan" });
   },
 
+  // ── Doc tracking flow ────────────────────────────────────
+  async docReceivedLK(id, adminName) {
+    return SB.update(id, { status: "doc_received_lk", admin_lk_name: adminName, doc_received_lk_at: new Date().toISOString() });
+  },
+  async docSentJkt(id) {
+    return SB.update(id, { status: "doc_sent_jkt", doc_sent_jkt_at: new Date().toISOString() });
+  },
+  async docReceivedJkt(id, adminName) {
+    return SB.update(id, { status: "doc_received_jkt", admin_jkt_name: adminName, doc_received_jkt_at: new Date().toISOString() });
+  },
+  async docComplete(id, oerAmount, note) {
+    const patch = { status: "doc_complete", ga_note: note||"", doc_complete_at: new Date().toISOString() };
+    if (oerAmount) patch.oer_amount = oerAmount;
+    return SB.update(id, patch);
+  },
+
   async editData(id, d) {
     const patch = {};
     if (d.purpose)     patch.purpose     = d.purpose;
@@ -224,7 +248,7 @@ const SB = {
     if (existing && existing.length>0) return { ok:false, error:"Username sudah dipakai" };
     const res = await SB.req("POST","accounts",{
       username:acc.username.toLowerCase(), password:acc.password,
-      name:acc.name, dept:acc.dept, created_at:new Date().toISOString()
+      name:acc.name, dept:acc.dept, area:acc.area||"Jakarta", created_at:new Date().toISOString()
     });
     return res ? { ok:true } : { ok:false, error:"Gagal menyimpan akun" };
   },
@@ -233,7 +257,7 @@ const SB = {
     const rows = await SB.req("GET","accounts",null,{
       "username":"eq."+username.toLowerCase(),
       "password":"eq."+password,
-      "select":"username,name,dept"
+      "select":"username,name,dept,area"
     });
     if (rows && rows.length>0) return { ok:true, ...rows[0] };
     return { ok:false, error:"Username atau password salah" };
@@ -254,6 +278,10 @@ const API = {
   sendConfirm: (id)          => SB.sendForConfirmation(id),
   empConfirm:  (id)          => SB.employeeConfirm(id),
   empDispute:  (id,r)        => SB.employeeDispute(id,r),
+  docReceivedLK:  (id,n)     => SB.docReceivedLK(id,n),
+  docSentJkt:     (id)       => SB.docSentJkt(id),
+  docReceivedJkt: (id,n)     => SB.docReceivedJkt(id,n),
+  docComplete:    (id,amt,n) => SB.docComplete(id,amt,n),
 };
 
 
@@ -491,6 +519,7 @@ function LoginScreen({ onLogin }) {
   // karyawan register fields
   const [regName,setRegName]   = useState("");
   const [regDept,setRegDept]   = useState("");
+  const [regArea,setRegArea]   = useState("");
   const [regUser,setRegUser]   = useState("");
   const [regPass,setRegPass]   = useState("");
   const [regPass2,setRegPass2] = useState("");
@@ -507,13 +536,14 @@ function LoginScreen({ onLogin }) {
   const doRegister = async () => {
     if (!regName.trim())       return setErr("Nama tidak boleh kosong");
     if (!regDept)              return setErr("Pilih departemen dulu");
+    if (!regArea)              return setErr("Pilih area/kota dulu");
     if (!regUser.trim())       return setErr("Username tidak boleh kosong");
     if (regUser.includes(" ")) return setErr("Username tidak boleh mengandung spasi");
     if (regPass.length < 4)    return setErr("Password minimal 4 karakter");
     if (regPass !== regPass2)  return setErr("Konfirmasi password tidak cocok");
     const ukey = regUser.toLowerCase().trim();
     const av   = regName.trim().split(" ").map(w=>w[0]).join("").toUpperCase().slice(0,2);
-    const newAcc = { username:ukey, name:regName.trim(), dept:regDept, avatar:av, password:regPass };
+    const newAcc = { username:ukey, name:regName.trim(), dept:regDept, area:regArea, avatar:av, password:regPass };
     setBusy2(true);
     if (isReady()) {
       // Sheets mode: ignore localStorage sepenuhnya
@@ -529,7 +559,7 @@ function LoginScreen({ onLogin }) {
       lsSave2(accounts);
       setBusy2(false);
     }
-    onLogin({ name:newAcc.name, dept:newAcc.dept, role:"employee", avatar:av });
+    onLogin({ name:newAcc.name, dept:newAcc.dept, area:newAcc.area, role:"employee", avatar:av });
   };
 
   // ── Login karyawan (Sheets + localStorage fallback) ───────
@@ -546,8 +576,9 @@ function LoginScreen({ onLogin }) {
       if (!res.ok) return setErr(res.error || "Username atau password salah");
       const name = res.name || res.acc?.name || ukey;
       const dept = res.dept || res.acc?.dept || "-";
+      const area = res.area || res.acc?.area || "Jakarta";
       const av2  = name.split(" ").map(w=>w[0]).join("").toUpperCase().slice(0,2);
-      onLogin({ name, dept, role:"employee", avatar:av2 });
+      onLogin({ name, dept, area, role:"employee", avatar:av2 });
     } else {
       const accounts = lsGet2();
       const acc = accounts[ukey];
@@ -558,14 +589,25 @@ function LoginScreen({ onLogin }) {
     }
   };
 
-  // ── Login staff (approver / finance) ──────────────────────
+  // ── Login staff (approver / finance / admin / ga) ─────────
   const doStaff = () => {
-    const correct = role==="approver" ? CONFIG.PASS_APPROVER : CONFIG.PASS_FINANCE;
+    const passMap = {
+      approver: CONFIG.PASS_APPROVER,
+      finance:  CONFIG.PASS_FINANCE,
+      admin_lk: CONFIG.PASS_ADMIN_LK,
+      admin_jkt:CONFIG.PASS_ADMIN_JKT,
+      ga:       CONFIG.PASS_GA,
+    };
+    const correct = passMap[role];
     if (staffPass !== correct) return setErr("Password salah!");
-    const info = role==="approver"
-      ? { name:"Approver", dept:"Management", avatar:"AP" }
-      : { name:"Finance",  dept:"Finance",    avatar:"FN" };
-    onLogin({ ...info, role });
+    const infoMap = {
+      approver:  { name:"Approver",    dept:"Management", avatar:"AP" },
+      finance:   { name:"Finance",     dept:"Finance",    avatar:"FN" },
+      admin_lk:  { name:"Admin LK",    dept:"Admin",      avatar:"AL" },
+      admin_jkt: { name:"Admin Jakarta",dept:"Admin",     avatar:"AJ" },
+      ga:        { name:"GA",          dept:"GA",         avatar:"GA" },
+    };
+    onLogin({ ...infoMap[role], role });
   };
 
   // PwInput moved to module scope
@@ -583,7 +625,7 @@ function LoginScreen({ onLogin }) {
 
         {/* Tabs: Karyawan vs Staff */}
         <div className="l-tabs">
-          {[["karyawan","👤  Karyawan"],["staff","🔐  Admin / Finance"]].map(([v,l])=>(
+          {[["karyawan","👤  Karyawan"],["staff","🔐  Staff / Admin"]].map(([v,l])=>(
             <button key={v} className={`l-tab${tab===v?" on":""}`}
               onClick={()=>{setTab(v);setErr("");setMode("login");}}>
               {l}
@@ -628,9 +670,19 @@ function LoginScreen({ onLogin }) {
             </div>
             <div className="l-fld">
               <label>Departemen <span style={{color:"var(--rd)"}}>*</span></label>
-              <select value={regDept} onChange={e=>{setRegDept(e.target.value);clr();}}>
+              <select value={regDept==="Lainnya"||DEPTS.slice(0,-1).includes(regDept)?regDept:regDept?"Lainnya":""} onChange={e=>{setRegDept(e.target.value);clr();}}>
                 <option value="">-- Pilih Departemen --</option>
                 {DEPTS.map(d=><option key={d}>{d}</option>)}
+              </select>
+              {regDept==="Lainnya" && (
+                <input value={regDept==="Lainnya"?"":regDept} onChange={e=>setRegDept(e.target.value||"Lainnya")} placeholder="Tulis nama departemen..." style={{marginTop:6}}/>
+              )}
+            </div>
+            <div className="l-fld">
+              <label>Area / Kota <span style={{color:"var(--rd)"}}>*</span></label>
+              <select value={regArea} onChange={e=>{setRegArea(e.target.value);clr();}}>
+                <option value="">-- Pilih Area --</option>
+                {AREAS.map(a=><option key={a}>{a}</option>)}
               </select>
             </div>
             <div className="l-fld">
@@ -664,7 +716,10 @@ function LoginScreen({ onLogin }) {
             <div className="l-fld">
               <label>Login sebagai</label>
               <select value={role} onChange={e=>{setRole(e.target.value);clr();}}>
-                <option value="approver">✅  Approver / Admin</option>
+                <option value="approver">✅  Approver / Atasan</option>
+                <option value="admin_lk">📦  Admin Luar Kota</option>
+                <option value="admin_jkt">🏢  Admin Jakarta</option>
+                <option value="ga">🗂  GA</option>
                 <option value="finance">💼  Finance</option>
               </select>
             </div>
@@ -675,9 +730,11 @@ function LoginScreen({ onLogin }) {
             </div>
             <button className="l-btn" onClick={doStaff}>Masuk →</button>
             <div className="l-note">
-              🔑 Password default: <strong>approver123</strong> / <strong>finance123</strong><br/>
-              Ganti di menu <strong>Pengaturan</strong> (login Finance).<br/><br/>
-              🔒 <strong>Lupa password karyawan?</strong> Hubungi Finance untuk reset akun di Google Sheets tab <em>Accounts</em>.
+              🔑 Password default:<br/>
+              Approver: <strong>approver123</strong> | Finance: <strong>finance123</strong><br/>
+              Admin LK: <strong>adminlk123</strong> | Admin JKT: <strong>adminjkt123</strong><br/>
+              GA: <strong>ga123</strong><br/><br/>
+              Ganti di menu <strong>Pengaturan</strong> (login Finance).
             </div>
           </>
         )}
@@ -692,7 +749,7 @@ function LoginScreen({ onLogin }) {
 function Dashboard({ data, user, nav }) {
   const mine    = user.role==="employee" ? data.filter(d=>d.submitter===user.name) : data;
   const pending = data.filter(d=>d.status==="pending");
-  const approved= data.filter(d=>d.status==="approved");
+  const approved= data.filter(d=>["approved","doc_complete"].includes(d.status));
   const overdue = data.filter(d=>d.status==="overdue");
   const totalRp = mine.reduce((a,d)=>a+d.amount,0);
   const paidRp  = mine.filter(d=>d.status==="paid").reduce((a,d)=>a+d.amount,0);
@@ -707,7 +764,7 @@ function Dashboard({ data, user, nav }) {
           <p style={{fontSize:10,fontWeight:800,letterSpacing:".12em",textTransform:"uppercase",color:"var(--tl2)",marginBottom:4}}>Selamat datang</p>
           <h2 style={{fontSize:20,fontWeight:800,letterSpacing:"-.01em",marginBottom:3}}>{user.name}</h2>
           <p style={{fontSize:12.5,color:"rgba(255,255,255,.5)"}}>
-            {user.dept} · {user.role==="finance"?"Finance":user.role==="approver"?"Approver / Atasan":"Karyawan"}
+            {user.dept} {user.area ? `· ${user.area}` : ""} · {user.role==="finance"?"Finance":user.role==="approver"?"Approver / Atasan":user.role==="admin_lk"?"Admin Luar Kota":user.role==="admin_jkt"?"Admin Jakarta":user.role==="ga"?"GA":"Karyawan"}
           </p>
         </div>
       </div>
@@ -1023,6 +1080,284 @@ function ApprovalPage({ data, onAction, onSel, user }) {
 }
 
 // ═══════════════════════════════════════════════════════════════
+// ADMIN LK QUEUE
+// ═══════════════════════════════════════════════════════════════
+function AdminLKQueue({ data, onAction, onSel, user }) {
+  const [sel, setSel] = useState({});
+  const [adminName, setAdminName] = useState("");
+  const queue = data.filter(d => d.status === "pending");
+  const selIds = Object.keys(sel).filter(k => sel[k]);
+
+  const doReceive = (ids) => {
+    if (!adminName.trim()) { alert("Isi nama Admin dulu"); return; }
+    ids.forEach(id => {
+      onAction(id, "doc_received_lk", adminName);
+      if (isReady()) API.docReceivedLK(id, adminName).catch(()=>{});
+    });
+    setSel({});
+  };
+
+  const doSendJkt = (ids) => {
+    ids.forEach(id => {
+      onAction(id, "doc_sent_jkt", null);
+      if (isReady()) API.docSentJkt(id).catch(()=>{});
+    });
+    setSel({});
+  };
+
+  const received = data.filter(d => d.status === "doc_received_lk");
+  const selReceivedIds = Object.keys(sel).filter(k => sel[k] && received.find(d=>d.id===k));
+
+  return (
+    <div>
+      <div className="al ab mb4"><Ic n="bell" s={14} c="#2563eb"/><span><strong>Admin Luar Kota</strong> — Terima dokumen fisik dari karyawan luar kota, lalu kirim ke Jakarta.</span></div>
+
+      {/* Nama Admin */}
+      <div className="card" style={{marginBottom:12}}>
+        <div style={{padding:"10px 14px"}}>
+          <label style={{fontSize:12,fontWeight:700,color:"var(--i2)",display:"block",marginBottom:6}}>Nama Admin (dicatat di sistem) *</label>
+          <input value={adminName} onChange={e=>setAdminName(e.target.value)} placeholder="Nama Admin yang bertugas hari ini" style={{maxWidth:320}}/>
+        </div>
+      </div>
+
+      {/* Antrian: Menunggu Diterima */}
+      <div className="card" style={{marginBottom:12}}>
+        <div className="ch">
+          <h3>Menunggu Dokumen Diterima</h3>
+          {selIds.filter(k=>queue.find(d=>d.id===k)).length > 0 && (
+            <button className="btn bg sm" onClick={()=>doReceive(selIds.filter(k=>queue.find(d=>d.id===k)))}>
+              <Ic n="check" s={12}/>Terima {selIds.filter(k=>queue.find(d=>d.id===k)).length} Dipilih
+            </button>
+          )}
+        </div>
+        <div className="tw"><table>
+          <thead><tr>
+            <th><input type="checkbox" style={{width:"auto"}} onChange={e=>{const s={};queue.forEach(d=>{s[d.id]=e.target.checked;});setSel(p=>({...p,...s}));}}/></th>
+            <th>ID</th><th>Pemohon</th><th>Area</th><th>Keperluan</th><th>Diajukan</th><th>Aksi</th>
+          </tr></thead>
+          <tbody>{queue.map(d=>(
+            <tr key={d.id} onClick={()=>onSel(d.id)} style={{cursor:"pointer"}}>
+              <td onClick={e=>e.stopPropagation()}><input type="checkbox" style={{width:"auto"}} checked={!!sel[d.id]} onChange={e=>setSel(p=>({...p,[d.id]:e.target.checked}))}/></td>
+              <td><span className="mono">{d.id}</span></td>
+              <td><div className="bold" style={{fontSize:13}}>{d.submitter}</div><div style={{fontSize:11,color:"var(--i3)"}}>{d.dept}</div></td>
+              <td style={{fontSize:12}}>{d.area||"-"}</td>
+              <td><div className="trunc" style={{maxWidth:140}}>{d.purpose}</div></td>
+              <td style={{fontSize:11,color:"var(--i3)"}}>{fd(d.submitted)}</td>
+              <td onClick={e=>e.stopPropagation()}>
+                <button className="btn bg xs" onClick={()=>doReceive([d.id])}><Ic n="check" s={11}/>Terima</button>
+              </td>
+            </tr>
+          ))}</tbody>
+        </table>{queue.length===0&&<div className="empty"><Ic n="check" s={36}/><p style={{marginTop:10}}>Tidak ada antrian 🎉</p></div>}
+        </div>
+      </div>
+
+      {/* Sudah Diterima — Kirim ke Jakarta */}
+      {received.length > 0 && (
+        <div className="card">
+          <div className="ch">
+            <h3>Sudah Diterima — Kirim ke Jakarta</h3>
+            {selReceivedIds.length > 0 && (
+              <button className="btn bp sm" onClick={()=>doSendJkt(selReceivedIds)}>
+                ✈️ Kirim {selReceivedIds.length} ke Jakarta
+              </button>
+            )}
+          </div>
+          <div className="tw"><table>
+            <thead><tr>
+              <th><input type="checkbox" style={{width:"auto"}} onChange={e=>{const s={};received.forEach(d=>{s[d.id]=e.target.checked;});setSel(p=>({...p,...s}));}}/></th>
+              <th>ID</th><th>Pemohon</th><th>Diterima oleh</th><th>Keperluan</th><th>Aksi</th>
+            </tr></thead>
+            <tbody>{received.map(d=>(
+              <tr key={d.id} onClick={()=>onSel(d.id)} style={{cursor:"pointer"}}>
+                <td onClick={e=>e.stopPropagation()}><input type="checkbox" style={{width:"auto"}} checked={!!sel[d.id]} onChange={e=>setSel(p=>({...p,[d.id]:e.target.checked}))}/></td>
+                <td><span className="mono">{d.id}</span></td>
+                <td><div className="bold" style={{fontSize:13}}>{d.submitter}</div><div style={{fontSize:11,color:"var(--i3)"}}>{d.dept}</div></td>
+                <td style={{fontSize:12,color:"var(--tl)",fontWeight:700}}>{d.adminLkName||"-"}</td>
+                <td><div className="trunc" style={{maxWidth:140}}>{d.purpose}</div></td>
+                <td onClick={e=>e.stopPropagation()}>
+                  <button className="btn bp xs" onClick={()=>doSendJkt([d.id])}>✈️ Kirim JKT</button>
+                </td>
+              </tr>
+            ))}</tbody>
+          </table></div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
+// ADMIN JKT QUEUE
+// ═══════════════════════════════════════════════════════════════
+function AdminJKTQueue({ data, onAction, onSel, user }) {
+  const [sel, setSel] = useState({});
+  const [adminName, setAdminName] = useState("");
+  const queue = data.filter(d => d.status === "doc_sent_jkt");
+  const selIds = Object.keys(sel).filter(k => sel[k] && queue.find(d=>d.id===k));
+
+  const doReceive = (ids) => {
+    if (!adminName.trim()) { alert("Isi nama Admin dulu"); return; }
+    ids.forEach(id => {
+      onAction(id, "doc_received_jkt", adminName);
+      if (isReady()) API.docReceivedJkt(id, adminName).catch(()=>{});
+    });
+    setSel({});
+  };
+
+  // Jakarta karyawan — langsung pending → doc_received_jkt
+  const jktPending = data.filter(d => d.status === "pending" && (d.area === "Jakarta" || !d.area));
+
+  return (
+    <div>
+      <div className="al ab mb4"><Ic n="bell" s={14} c="#2563eb"/><span><strong>Admin Jakarta</strong> — Terima dokumen dari luar kota (sudah dikirim Admin LK) atau langsung dari karyawan Jakarta.</span></div>
+
+      <div className="card" style={{marginBottom:12}}>
+        <div style={{padding:"10px 14px"}}>
+          <label style={{fontSize:12,fontWeight:700,color:"var(--i2)",display:"block",marginBottom:6}}>Nama Admin Jakarta (dicatat di sistem) *</label>
+          <input value={adminName} onChange={e=>setAdminName(e.target.value)} placeholder="Nama Admin Jakarta yang bertugas" style={{maxWidth:320}}/>
+        </div>
+      </div>
+
+      {/* Dari Luar Kota */}
+      <div className="card" style={{marginBottom:12}}>
+        <div className="ch">
+          <h3>Dari Luar Kota — Menunggu Diterima Jakarta</h3>
+          {selIds.length > 0 && (
+            <button className="btn bg sm" onClick={()=>doReceive(selIds)}>
+              <Ic n="check" s={12}/>Terima {selIds.length} Dipilih
+            </button>
+          )}
+        </div>
+        <div className="tw"><table>
+          <thead><tr>
+            <th><input type="checkbox" style={{width:"auto"}} onChange={e=>{const s={};queue.forEach(d=>{s[d.id]=e.target.checked;});setSel(p=>({...p,...s}));}}/></th>
+            <th>ID</th><th>Pemohon</th><th>Area Asal</th><th>Admin LK</th><th>Keperluan</th><th>Aksi</th>
+          </tr></thead>
+          <tbody>{queue.map(d=>(
+            <tr key={d.id} onClick={()=>onSel(d.id)} style={{cursor:"pointer"}}>
+              <td onClick={e=>e.stopPropagation()}><input type="checkbox" style={{width:"auto"}} checked={!!sel[d.id]} onChange={e=>setSel(p=>({...p,[d.id]:e.target.checked}))}/></td>
+              <td><span className="mono">{d.id}</span></td>
+              <td><div className="bold" style={{fontSize:13}}>{d.submitter}</div><div style={{fontSize:11,color:"var(--i3)"}}>{d.dept}</div></td>
+              <td style={{fontSize:12}}>{d.area||"-"}</td>
+              <td style={{fontSize:12,color:"var(--tl)",fontWeight:700}}>{d.adminLkName||"-"}</td>
+              <td><div className="trunc" style={{maxWidth:120}}>{d.purpose}</div></td>
+              <td onClick={e=>e.stopPropagation()}>
+                <button className="btn bg xs" onClick={()=>doReceive([d.id])}><Ic n="check" s={11}/>Terima</button>
+              </td>
+            </tr>
+          ))}</tbody>
+        </table>{queue.length===0&&<div className="empty"><Ic n="check" s={36}/><p style={{marginTop:10}}>Tidak ada kiriman dari luar kota</p></div>}
+        </div>
+      </div>
+
+      {/* Karyawan Jakarta langsung */}
+      {jktPending.length > 0 && (
+        <div className="card">
+          <div className="ch"><h3>Karyawan Jakarta — Pengajuan Langsung</h3></div>
+          <div className="tw"><table>
+            <thead><tr><th>ID</th><th>Pemohon</th><th>Keperluan</th><th>Diajukan</th><th>Aksi</th></tr></thead>
+            <tbody>{jktPending.map(d=>(
+              <tr key={d.id} onClick={()=>onSel(d.id)} style={{cursor:"pointer"}}>
+                <td><span className="mono">{d.id}</span></td>
+                <td><div className="bold" style={{fontSize:13}}>{d.submitter}</div><div style={{fontSize:11,color:"var(--i3)"}}>{d.dept}</div></td>
+                <td><div className="trunc" style={{maxWidth:150}}>{d.purpose}</div></td>
+                <td style={{fontSize:11,color:"var(--i3)"}}>{fd(d.submitted)}</td>
+                <td onClick={e=>e.stopPropagation()}>
+                  <button className="btn bg xs" onClick={()=>{
+                    if (!adminName.trim()) { alert("Isi nama Admin dulu"); return; }
+                    onAction(d.id, "doc_received_jkt", adminName);
+                    if (isReady()) API.docReceivedJkt(d.id, adminName).catch(()=>{});
+                  }}><Ic n="check" s={11}/>Terima</button>
+                </td>
+              </tr>
+            ))}</tbody>
+          </table></div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
+// GA QUEUE
+// ═══════════════════════════════════════════════════════════════
+function GAQueue({ data, onAction, onSel, user }) {
+  const [sel, setSel] = useState({});
+  const [gaNote, setGaNote] = useState("");
+  const [editOerId, setEditOerId] = useState(null);
+  const [oerVal, setOerVal] = useState("");
+  const queue = data.filter(d => d.status === "doc_received_jkt");
+  const selIds = Object.keys(sel).filter(k => sel[k] && queue.find(d=>d.id===k));
+
+  const doComplete = (ids) => {
+    ids.forEach(id => {
+      const oerAmt = editOerId === id && oerVal ? parseFloat(oerVal) : null;
+      onAction(id, "doc_complete", gaNote||"Dokumen lengkap");
+      if (isReady()) API.docComplete(id, oerAmt, gaNote||"Dokumen lengkap").catch(()=>{});
+    });
+    setSel({}); setGaNote(""); setEditOerId(null); setOerVal("");
+  };
+
+  return (
+    <div>
+      <div className="al at mb4"><Ic n="check" s={14} c="var(--tl)"/><span><strong>GA</strong> — Cek kelengkapan lampiran & TTD. Edit nominal OER jika perlu, lalu konfirmasi dokumen lengkap.</span></div>
+
+      {selIds.length > 0 && (
+        <div className="card" style={{marginBottom:12,padding:"12px 16px",background:"var(--tlb)",border:"1px solid var(--tlbd)"}}>
+          <p style={{fontSize:13,fontWeight:700,marginBottom:8,color:"#134e4a"}}>{selIds.length} pengajuan dipilih — konfirmasi sekaligus</p>
+          <textarea value={gaNote} onChange={e=>setGaNote(e.target.value)} placeholder="Catatan GA (opsional)..." rows={2} style={{marginBottom:8}}/>
+          <button className="btn bg sm" onClick={()=>doComplete(selIds)}><Ic n="check" s={13}/>Dokumen Lengkap {selIds.length}x</button>
+        </div>
+      )}
+
+      <div className="card">
+        <div className="ch">
+          <h3>Antrian GA</h3>
+          <span style={{fontSize:12,color:"var(--i3)",fontWeight:600}}>{queue.length} pengajuan</span>
+        </div>
+        <div className="tw"><table>
+          <thead><tr>
+            <th><input type="checkbox" style={{width:"auto"}} onChange={e=>{const s={};queue.forEach(d=>{s[d.id]=e.target.checked;});setSel(p=>({...p,...s}));}}/></th>
+            <th>ID</th><th>Pemohon</th><th>Admin JKT</th><th>Keperluan</th><th>Nominal OER</th><th>Aksi</th>
+          </tr></thead>
+          <tbody>{queue.map(d=>(
+            <tr key={d.id}>
+              <td onClick={e=>e.stopPropagation()}><input type="checkbox" style={{width:"auto"}} checked={!!sel[d.id]} onChange={e=>setSel(p=>({...p,[d.id]:e.target.checked}))}/></td>
+              <td style={{cursor:"pointer"}} onClick={()=>onSel(d.id)}><span className="mono">{d.id}</span></td>
+              <td style={{cursor:"pointer"}} onClick={()=>onSel(d.id)}>
+                <div className="bold" style={{fontSize:13}}>{d.submitter}</div>
+                <div style={{fontSize:11,color:"var(--i3)"}}>{d.dept} · {d.area||"Jakarta"}</div>
+              </td>
+              <td style={{fontSize:12,color:"var(--tl)",fontWeight:700}}>{d.adminJktName||"-"}</td>
+              <td style={{cursor:"pointer"}} onClick={()=>onSel(d.id)}><div className="trunc" style={{maxWidth:130}}>{d.purpose}</div></td>
+              <td onClick={e=>e.stopPropagation()}>
+                {editOerId === d.id ? (
+                  <div style={{display:"flex",gap:5,alignItems:"center"}}>
+                    <input type="number" value={oerVal} onChange={e=>setOerVal(e.target.value)}
+                      placeholder="Nominal" style={{width:110,padding:"4px 7px",fontSize:12}}/>
+                    <button className="btn bg xs" onClick={()=>setEditOerId(null)}>✓</button>
+                  </div>
+                ) : (
+                  <div style={{display:"flex",gap:5,alignItems:"center"}}>
+                    <span style={{fontSize:12,fontWeight:700}}>{oerVal && editOerId!==d.id ? rp(parseFloat(oerVal)) : (d.oerAmount ? rp(d.oerAmount) : <span style={{color:"var(--i4)"}}>—</span>)}</span>
+                    <button className="btn bo xs" onClick={()=>setEditOerId(d.id)} style={{fontSize:10}}>✏️</button>
+                  </div>
+                )}
+              </td>
+              <td onClick={e=>e.stopPropagation()}>
+                <button className="btn bg xs" onClick={()=>doComplete([d.id])}><Ic n="check" s={11}/>Lengkap</button>
+              </td>
+            </tr>
+          ))}</tbody>
+        </table>{queue.length===0&&<div className="empty"><Ic n="check" s={36}/><p style={{marginTop:10}}>Tidak ada antrian GA 🎉</p></div>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
 // MONITOR PAGE
 // ═══════════════════════════════════════════════════════════════
 function MonitorPage({ data, onSel }) {
@@ -1109,16 +1444,22 @@ function SettingsPage({ onSave }) {
   const [sbKey,setSbKey] = useState(CONFIG.SUPABASE_KEY);
   const [pa,setPa]       = useState(CONFIG.PASS_APPROVER);
   const [pf,setPf]       = useState(CONFIG.PASS_FINANCE);
+  const [palk,setPalk]   = useState(CONFIG.PASS_ADMIN_LK);
+  const [pajkt,setPajkt] = useState(CONFIG.PASS_ADMIN_JKT);
+  const [pga,setPga]     = useState(CONFIG.PASS_GA);
   const [saved,setSaved] = useState(false);
   const [testing,setTesting]   = useState(false);
   const [testResult,setTestResult] = useState(null);
 
   const save = () => {
-    CONFIG.SUPABASE_URL  = sbUrl.trim();
-    CONFIG.SUPABASE_KEY  = sbKey.trim();
-    CONFIG.PASS_APPROVER = pa;
-    CONFIG.PASS_FINANCE  = pf;
-    _saveConfig({ SUPABASE_URL:sbUrl.trim(), SUPABASE_KEY:sbKey.trim(), PASS_APPROVER:pa, PASS_FINANCE:pf });
+    CONFIG.SUPABASE_URL   = sbUrl.trim();
+    CONFIG.SUPABASE_KEY   = sbKey.trim();
+    CONFIG.PASS_APPROVER  = pa;
+    CONFIG.PASS_FINANCE   = pf;
+    CONFIG.PASS_ADMIN_LK  = palk;
+    CONFIG.PASS_ADMIN_JKT = pajkt;
+    CONFIG.PASS_GA        = pga;
+    _saveConfig({ SUPABASE_URL:sbUrl.trim(), SUPABASE_KEY:sbKey.trim(), PASS_APPROVER:pa, PASS_FINANCE:pf, PASS_ADMIN_LK:palk, PASS_ADMIN_JKT:pajkt, PASS_GA:pga });
     setSaved(true); setTimeout(()=>setSaved(false),2500);
     if (onSave) onSave();
   };
@@ -1181,6 +1522,23 @@ function SettingsPage({ onSave }) {
               <input value={pf} onChange={e=>setPf(e.target.value)} placeholder="finance123"/>
               <p style={{fontSize:11,color:"var(--i3)",marginTop:3}}>Default: finance123</p>
             </div>
+          </div>
+          <div className="fg fg2 mb4">
+            <div>
+              <label className="fl">Password Admin Luar Kota</label>
+              <input value={palk} onChange={e=>setPalk(e.target.value)} placeholder="adminlk123"/>
+              <p style={{fontSize:11,color:"var(--i3)",marginTop:3}}>Default: adminlk123</p>
+            </div>
+            <div>
+              <label className="fl">Password Admin Jakarta</label>
+              <input value={pajkt} onChange={e=>setPajkt(e.target.value)} placeholder="adminjkt123"/>
+              <p style={{fontSize:11,color:"var(--i3)",marginTop:3}}>Default: adminjkt123</p>
+            </div>
+          </div>
+          <div className="fg" style={{maxWidth:300,marginBottom:16}}>
+            <label className="fl">Password GA</label>
+            <input value={pga} onChange={e=>setPga(e.target.value)} placeholder="ga123"/>
+            <p style={{fontSize:11,color:"var(--i3)",marginTop:3}}>Default: ga123</p>
           </div>
           <div style={{display:"flex",justifyContent:"flex-end",gap:9,alignItems:"center"}}>
             {saved && <span style={{color:"var(--gn)",fontWeight:700,fontSize:13}}>✓ Disimpan!</span>}
@@ -1488,12 +1846,14 @@ function DetailModal({ trx, user, onClose, onAction, onEdit }) {
   const [editing,setEditing] = useState(false);
   const isApp = user.role==="approver";
   const isFin = user.role==="finance";
+  const isAdminLK  = user.role==="admin_lk";
+  const isAdminJKT = user.role==="admin_jkt";
+  const isGA  = user.role==="ga";
   const isOwner = user.role==="employee" && trx.submitter===user.name;
-  const canEdit = (isFin || (isOwner && trx.status!=="paid" && trx.status!=="rejected"));
+  const canEdit = (isFin || isGA || (isOwner && trx.status!=="paid" && trx.status!=="rejected"));
 
   const act = (action, n) => {
-    const sm = {approve:"approved",reject:"rejected",process:"processing",pay:"awaiting_oer"};
-    // UI update INSTAN — Supabase sync di background
+    const sm = {approve:"approved",reject:"rejected",process:"processing",pay:"awaiting_oer",doc_complete:"doc_complete"};
     onAction(trx.id, action, n);
     if (isReady()) API.update(trx.id, sm[action]||action, n)
       .catch(e=>console.error("sync error:",e));
@@ -1527,11 +1887,15 @@ function DetailModal({ trx, user, onClose, onAction, onEdit }) {
   };
   const rc = recon(trx);
 
+  const docStatuses = ["doc_received_lk","doc_sent_jkt","doc_received_jkt","doc_complete","approved","processing","paid","awaiting_oer","kurang_bayar","lebih_bayar","awaiting_confirm","employee_confirmed","settled"];
   const tl = [
-    {ok:true,  icon:"send",  title:"Pengajuan Dikirim",  sub:`${trx.submitter} · ${fd(trx.submitted)}`, col:"var(--tl)"},
-    {ok:!["pending"].includes(trx.status), icon:"user", title:"Approval Admin", sub:trx.status==="pending"?"Menunggu…":trx.approverName, col:trx.status==="pending"?"var(--am)":"var(--gn)"},
-    {ok:["processing","paid"].includes(trx.status), icon:"money", title:"Diproses Finance", sub:trx.status==="processing"?"Sedang diproses…":trx.status==="paid"?"Selesai":"Belum", col:trx.status==="paid"?"var(--gn)":"var(--i4)"},
-    {ok:trx.status==="paid", icon:"check", title:"Pembayaran", sub:trx.status==="paid"?`Dibayar · ${fd(trx.settledDate)}`:"Menunggu", col:trx.status==="paid"?"var(--gn)":"var(--i4)"},
+    {ok:true, icon:"send", title:"Pengajuan Dikirim", sub:`${trx.submitter} · ${fd(trx.submitted)}`, col:"var(--tl)"},
+    {ok:docStatuses.includes(trx.status), icon:"user", title:"Diterima Admin LK", sub:trx.adminLkName||(trx.status==="pending"?"Menunggu dokumen fisik…":"–"), col:"var(--tl)"},
+    {ok:["doc_sent_jkt","doc_received_jkt","doc_complete","approved","processing","paid","awaiting_oer","kurang_bayar","lebih_bayar","awaiting_confirm","employee_confirmed","settled"].includes(trx.status), icon:"send", title:"Dikirim ke Jakarta", sub:"", col:"var(--bl)"},
+    {ok:["doc_received_jkt","doc_complete","approved","processing","paid","awaiting_oer","kurang_bayar","lebih_bayar","awaiting_confirm","employee_confirmed","settled"].includes(trx.status), icon:"user", title:"Diterima Admin Jakarta", sub:trx.adminJktName||"–", col:"var(--tl)"},
+    {ok:["doc_complete","approved","processing","paid","awaiting_oer","kurang_bayar","lebih_bayar","awaiting_confirm","employee_confirmed","settled"].includes(trx.status), icon:"check", title:"Dokumen Lengkap (GA)", sub:trx.gaNote||"–", col:"var(--gn)"},
+    {ok:["processing","paid","awaiting_oer","kurang_bayar","lebih_bayar","awaiting_confirm","employee_confirmed","settled"].includes(trx.status), icon:"money", title:"Diproses Finance", sub:"", col:"var(--pu)"},
+    {ok:trx.status==="paid"||trx.settled, icon:"check", title:"Pembayaran", sub:trx.status==="paid"?`Dibayar · ${fd(trx.settledDate)}`:"Menunggu", col:trx.status==="paid"?"var(--gn)":"var(--i4)"},
   ];
 
   return (
@@ -1621,7 +1985,7 @@ function DetailModal({ trx, user, onClose, onAction, onEdit }) {
                   </div>
                 </div>
               )}
-              {isFin&&trx.status==="approved"&&(
+              {isFin&&["approved","doc_complete"].includes(trx.status)&&(
                 <div style={{marginTop:16,padding:14,background:"var(--ln2)",borderRadius:"var(--r2)",border:"1px solid var(--ln)"}}>
                   <p style={{fontSize:13,fontWeight:700,marginBottom:9}}>Mulai Proses</p>
                   <textarea value={note} onChange={e=>setNote(e.target.value)} placeholder="Catatan Finance..." rows={2} style={{marginBottom:9}}/>
@@ -1827,6 +2191,10 @@ export default function App() {
       if (action==="send_confirm")  return {...d, status:"awaiting_confirm"};
       if (action==="emp_confirm")   return {...d, status:"employee_confirmed"};
       if (action==="emp_dispute")   return {...d, status:"disputed", financeNote:noteOrData};
+      if (action==="doc_received_lk")  return {...d, status:"doc_received_lk", adminLkName:noteOrData};
+      if (action==="doc_sent_jkt")     return {...d, status:"doc_sent_jkt"};
+      if (action==="doc_received_jkt") return {...d, status:"doc_received_jkt", adminJktName:noteOrData};
+      if (action==="doc_complete")     return {...d, status:"doc_complete", gaNote:typeof noteOrData==="string"?noteOrData:""};
       const m = {
         approve:  {status:"approved"},
         reject:   {status:"rejected",   financeNote:noteOrData},
@@ -1843,6 +2211,10 @@ export default function App() {
       oer_submitted:"✓ OER berhasil disubmit",
       edit_oer:"✓ OER dikoreksi", send_confirm:"✓ Nominal dikirim ke karyawan untuk konfirmasi",
       emp_confirm:"✓ Karyawan menyetujui nominal", emp_dispute:"Karyawan mengajukan keberatan",
+      doc_received_lk:"✓ Dokumen diterima Admin Luar Kota",
+      doc_sent_jkt:"✓ Dokumen dikirim ke Jakarta",
+      doc_received_jkt:"✓ Dokumen diterima Admin Jakarta",
+      doc_complete:"✓ Dokumen lengkap — siap diproses Finance",
     };
     showToast(msgs[action]||"Berhasil");
     setSelId(null);
@@ -1875,11 +2247,14 @@ export default function App() {
   const sel = data.find(d=>d.id===selId);
 
   const NAV = {
-    employee:[{id:"dashboard",ic:"home",lb:"Dashboard"},{id:"submit",ic:"plus",lb:"Ajukan Baru"},{id:"list",ic:"list",lb:"Pengajuan Saya"}],
-    approver:[{id:"dashboard",ic:"home",lb:"Dashboard"},{id:"approval",ic:"check",lb:"Antrian Approval",bd:pCt},{id:"list",ic:"list",lb:"Semua Pengajuan"}],
-    finance: [{id:"dashboard",ic:"home",lb:"Dashboard"},{id:"monitor",ic:"chart",lb:"Monitor Finance",bd:aCt||null},{id:"list",ic:"list",lb:"Semua Pengajuan"},{id:"overdue",ic:"alert",lb:"CA Outstanding",bd:oCt||null},{id:"settings",ic:"settings",lb:"Pengaturan"}],
+    employee: [{id:"dashboard",ic:"home",lb:"Dashboard"},{id:"submit",ic:"plus",lb:"Ajukan Baru"},{id:"list",ic:"list",lb:"Pengajuan Saya"}],
+    approver: [{id:"dashboard",ic:"home",lb:"Dashboard"},{id:"approval",ic:"check",lb:"Antrian Approval",bd:pCt},{id:"list",ic:"list",lb:"Semua Pengajuan"}],
+    admin_lk: [{id:"dashboard",ic:"home",lb:"Dashboard"},{id:"admin_lk_queue",ic:"check",lb:"Antrian Dokumen",bd:data.filter(d=>d.status==="pending").length||null},{id:"list",ic:"list",lb:"Semua Pengajuan"}],
+    admin_jkt:[{id:"dashboard",ic:"home",lb:"Dashboard"},{id:"admin_jkt_queue",ic:"check",lb:"Antrian Jakarta",bd:data.filter(d=>d.status==="doc_sent_jkt").length||null},{id:"list",ic:"list",lb:"Semua Pengajuan"}],
+    ga:       [{id:"dashboard",ic:"home",lb:"Dashboard"},{id:"ga_queue",ic:"check",lb:"Antrian GA",bd:data.filter(d=>d.status==="doc_received_jkt").length||null},{id:"list",ic:"list",lb:"Semua Pengajuan"}],
+    finance:  [{id:"dashboard",ic:"home",lb:"Dashboard"},{id:"monitor",ic:"chart",lb:"Monitor Finance",bd:aCt||null},{id:"list",ic:"list",lb:"Semua Pengajuan"},{id:"overdue",ic:"alert",lb:"CA Outstanding",bd:oCt||null},{id:"settings",ic:"settings",lb:"Pengaturan"}],
   };
-  const TITLES = {dashboard:"Dashboard",submit:"Form Pengajuan",list:"Daftar Pengajuan",approval:"Antrian Approval",monitor:"Monitor Finance",overdue:"CA Outstanding",settings:"Pengaturan"};
+  const TITLES = {dashboard:"Dashboard",submit:"Form Pengajuan",list:"Daftar Pengajuan",approval:"Antrian Approval",admin_lk_queue:"Antrian Admin LK",admin_jkt_queue:"Antrian Admin Jakarta",ga_queue:"Antrian GA",monitor:"Monitor Finance",overdue:"CA Outstanding",settings:"Pengaturan"};
 
   // Show login if not logged in
   if (!user) return (<><style>{CSS}</style><LoginScreen onLogin={handleLogin}/></>);
@@ -1939,6 +2314,9 @@ export default function App() {
                 {page==="submit"    && <SubmitPage user={user} onSubmit={handleSubmit} data={data}/>}
                 {page==="list"      && <ListPage data={data} user={user} onSel={id=>setSelId(id)}/>}
                 {page==="approval"  && <ApprovalPage data={data} onAction={handleAction} onSel={(id)=>{setSelId(id);}} user={user}/>}
+                {page==="admin_lk_queue"  && <AdminLKQueue data={data} onAction={handleAction} onSel={id=>setSelId(id)} user={user}/>}
+                {page==="admin_jkt_queue" && <AdminJKTQueue data={data} onAction={handleAction} onSel={id=>setSelId(id)} user={user}/>}
+                {page==="ga_queue"        && <GAQueue data={data} onAction={handleAction} onSel={id=>setSelId(id)} user={user}/>}
                 {page==="monitor"   && <MonitorPage data={data} onSel={id=>setSelId(id)}/>}
                 {page==="settings"  && <SettingsPage onSave={()=>showToast("✓ Pengaturan disimpan")}/>}
                 {page==="overdue"   && (
