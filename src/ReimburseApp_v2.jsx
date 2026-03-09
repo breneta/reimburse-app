@@ -144,6 +144,9 @@ const SB = {
       oerNote:r.oer_note||"", oerDate:r.oer_date||"",
       caRef:r.ca_ref||"",
       bankVoucherNo:r.bank_voucher_no||"",
+      docNo:r.doc_no||"",
+      sapText:r.sap_text||"",
+      transferTo:r.transfer_to||"",
       adminLkName:r.admin_lk_name||"", adminJktName:r.admin_jkt_name||"",
       gaNote:r.ga_note||"", area:r.area||"Jakarta",
     }));
@@ -166,10 +169,12 @@ const SB = {
     return SB.req("PATCH","transactions",patch,{"id":"eq."+id});
   },
 
-  async updateStatus(id, status, note, voucherNo) {
+  async updateStatus(id, status, note, voucherNo, docNo, sapText) {
     const patch = { status };
     if (note) patch.finance_note = note;
     if (voucherNo) patch.bank_voucher_no = voucherNo;
+    if (docNo) patch.doc_no = docNo;
+    if (sapText) patch.sap_text = sapText;
     if (status==="awaiting_oer"||status==="paid") patch.settled_date = today();
     return SB.update(id, patch);
   },
@@ -297,7 +302,7 @@ const SB = {
 const API = {
   getAll:      ()       => SB.getAll(),
   create:      (data)   => SB.create(data),
-  update:      (id,s,n,v) => SB.updateStatus(id,s,n,v),
+  update:      (id,s,n,v,dn,st) => SB.updateStatus(id,s,n,v,dn,st),
   settle:      (id,n)   => SB.settle(id,n),
   submitOer:   (id,d,ca)=> SB.submitOer(id,d,ca),
   registerAcc: (acc)    => SB.registerAcc(acc),
@@ -1189,7 +1194,11 @@ function AdminJKTQueue({ data, onAction, onSel, user }) {
   const [sel, setSel] = useState({});
   const [adminName, setAdminName] = useState("");
   const queue = data.filter(d => d.status === "doc_sent_jkt");
-  const selIds = Object.keys(sel).filter(k => sel[k] && queue.find(d=>d.id===k));
+  const jktPending = data.filter(d => d.status === "pending" && (d.area === "Jakarta" || !d.area));
+
+  // Semua yang bisa di-select: dari LK + karyawan Jakarta langsung
+  const selLKIds  = Object.keys(sel).filter(k => sel[k] && queue.find(d=>d.id===k));
+  const selJKTIds = Object.keys(sel).filter(k => sel[k] && jktPending.find(d=>d.id===k));
 
   const doReceive = (ids) => {
     if (!adminName.trim()) { alert("Isi nama Admin dulu"); return; }
@@ -1199,9 +1208,6 @@ function AdminJKTQueue({ data, onAction, onSel, user }) {
     });
     setSel({});
   };
-
-  // Jakarta karyawan — langsung pending → doc_received_jkt
-  const jktPending = data.filter(d => d.status === "pending" && (d.area === "Jakarta" || !d.area));
 
   return (
     <div>
@@ -1217,10 +1223,10 @@ function AdminJKTQueue({ data, onAction, onSel, user }) {
       {/* Dari Luar Kota */}
       <div className="card" style={{marginBottom:12}}>
         <div className="ch">
-          <h3>Dari Luar Kota — Menunggu Diterima Jakarta</h3>
-          {selIds.length > 0 && (
-            <button className="btn bg sm" onClick={()=>doReceive(selIds)}>
-              <Ic n="check" s={12}/>Terima {selIds.length} Dipilih
+          <h3>Dari Luar Kota — Menunggu Diterima</h3>
+          {selLKIds.length > 0 && (
+            <button className="btn bg sm" onClick={()=>doReceive(selLKIds)}>
+              <Ic n="check" s={12}/>Terima {selLKIds.length} Dipilih
             </button>
           )}
         </div>
@@ -1246,24 +1252,31 @@ function AdminJKTQueue({ data, onAction, onSel, user }) {
         </div>
       </div>
 
-      {/* Karyawan Jakarta langsung */}
+      {/* Karyawan Jakarta langsung — sekarang juga bisa bulk select */}
       {jktPending.length > 0 && (
         <div className="card">
-          <div className="ch"><h3>Karyawan Jakarta — Pengajuan Langsung</h3></div>
+          <div className="ch">
+            <h3>Karyawan Jakarta — Pengajuan Langsung</h3>
+            {selJKTIds.length > 0 && (
+              <button className="btn bg sm" onClick={()=>doReceive(selJKTIds)}>
+                <Ic n="check" s={12}/>Terima {selJKTIds.length} Dipilih
+              </button>
+            )}
+          </div>
           <div className="tw"><table>
-            <thead><tr><th>ID</th><th>Pemohon</th><th>Keperluan</th><th>Diajukan</th><th>Aksi</th></tr></thead>
+            <thead><tr>
+              <th><input type="checkbox" style={{width:"auto"}} onChange={e=>{const s={};jktPending.forEach(d=>{s[d.id]=e.target.checked;});setSel(p=>({...p,...s}));}}/></th>
+              <th>ID</th><th>Pemohon</th><th>Keperluan</th><th>Diajukan</th><th>Aksi</th>
+            </tr></thead>
             <tbody>{jktPending.map(d=>(
               <tr key={d.id} onClick={()=>onSel(d.id)} style={{cursor:"pointer"}}>
+                <td onClick={e=>e.stopPropagation()}><input type="checkbox" style={{width:"auto"}} checked={!!sel[d.id]} onChange={e=>setSel(p=>({...p,[d.id]:e.target.checked}))}/></td>
                 <td><span className="mono">{d.id}</span></td>
                 <td><div className="bold" style={{fontSize:13}}>{d.submitter}</div><div style={{fontSize:11,color:"var(--i3)"}}>{d.dept}</div></td>
                 <td><div className="trunc" style={{maxWidth:150}}>{d.purpose}</div></td>
                 <td style={{fontSize:11,color:"var(--i3)"}}>{fd(d.submitted)}</td>
                 <td onClick={e=>e.stopPropagation()}>
-                  <button className="btn bg xs" onClick={()=>{
-                    if (!adminName.trim()) { alert("Isi nama Admin dulu"); return; }
-                    onAction(d.id, "doc_received_jkt", adminName);
-                    if (isReady()) API.docReceivedJkt(d.id, adminName).catch(()=>{});
-                  }}><Ic n="check" s={11}/>Terima</button>
+                  <button className="btn bg xs" onClick={()=>doReceive([d.id])}><Ic n="check" s={11}/>Terima</button>
                 </td>
               </tr>
             ))}</tbody>
@@ -1518,219 +1531,125 @@ function MonitorPage({ data, onSel, onAction }) {
 }
 
 // ═══════════════════════════════════════════════════════════════
-// FILING VOUCHER PAGE
+// FILING VOUCHER PAGE — ditarik dari transaksi yang sudah lunas
 // ═══════════════════════════════════════════════════════════════
-function FilingPage({ data }) {
-  const today2 = () => new Date().toISOString().slice(0,10);
+function FilingPage({ data, onSaveDoc }) {
   const thisMonth = () => new Date().toISOString().slice(0,7);
-
-  const [vouchers, setVouchers]   = useState([]);
-  const [accounts, setAccounts]   = useState([]);
-  const [loading, setLoading]     = useState(true);
   const [filterMonth, setFilterMonth] = useState(thisMonth());
-  const [showForm, setShowForm]   = useState(false);
-  const [saving, setSaving]       = useState(false);
-  const [deleting, setDeleting]   = useState(null);
+  const [editId, setEditId] = useState(null);  // trx.id yang sedang diedit Transfer To
+  const [editTransferTo, setEditTransferTo] = useState("");
+  const [saving, setSaving] = useState(false);
 
-  const emptyForm = { bankVoucherNo:"", docNo:"", klikDate:today2(), text:"", transferTo:"", amount:"", trxId:"" };
-  const [form, setForm] = useState(emptyForm);
-  const set = (k,v) => setForm(p=>({...p,[k]:v}));
+  // Transaksi yang sudah dibayar dan punya Bank Voucher No
+  const paidTrx = data.filter(d =>
+    ["paid","awaiting_oer","settled","kurang_bayar","lebih_bayar","awaiting_confirm","employee_confirmed"].includes(d.status)
+    && d.bankVoucherNo
+  );
 
-  // When trxId changes, auto-fill transferTo dari field "Atas Nama" yang karyawan isi sendiri (account_name)
-  // dan auto-fill amount dari jumlah pengajuan
-  const handleTrxSelect = (trxId) => {
-    if (!trxId) { set("trxId",""); return; }
-    const trx = data.find(d=>d.id===trxId);
-    if (!trx) return;
-    const acc = accounts.find(a=>a.name===trx.submitter);
-    // account_name = Atas Nama rekening yang karyawan isi sendiri di Dashboard
-    const atasNama = acc?.account_name || "";
-    setForm(p=>({...p, trxId, transferTo: atasNama, amount: p.amount||String(trx.amount) }));
-  };
+  // Semua bulan yang ada dari settledDate
+  const months = [...new Set([thisMonth(), ...paidTrx.map(d=>(d.settledDate||"").slice(0,7)).filter(Boolean)])].sort().reverse();
 
-  // Period otomatis dari tanggal klik BCA
-  const period = form.klikDate ? form.klikDate.slice(0,7) : thisMonth();
+  const filtered = paidTrx.filter(d=>(d.settledDate||"").slice(0,7)===filterMonth);
+  const total = filtered.reduce((a,d)=>a+d.amount,0);
 
-  const load = async () => {
-    setLoading(true);
-    try {
-      if (isReady()) {
-        const [rows, accs] = await Promise.all([SB.getVouchers(), SB.getAllAccounts()]);
-        setVouchers(rows.map(r=>({
-          id:r.id, period:r.period, bankVoucherNo:r.bank_voucher_no,
-          docNo:r.doc_no, klikDate:r.klik_date, text:r.text,
-          transferTo:r.transfer_to, amount:r.amount, trxId:r.trx_id||"",
-        })));
-        setAccounts(accs||[]);
-      }
-    } catch(e) { console.error(e); }
-    setLoading(false);
-  };
+  // Incomplete = sudah paid tapi belum ada docNo atau sapText
+  const incomplete = filtered.filter(d=>!d.docNo||!d.sapText);
 
-  useState(()=>{ load(); },[]);
-
-  const save = async () => {
-    if (!form.bankVoucherNo||!form.docNo||!form.klikDate||!form.text||!form.transferTo||!form.amount) {
-      alert("Harap lengkapi semua field wajib (*)"); return;
-    }
+  const saveTransferTo = async (trxId, val) => {
     setSaving(true);
-    const entry = { ...form, period, amount: parseFloat(String(form.amount).replace(/\D/g,""))||0 };
+    onSaveDoc(trxId, { transferTo: val });
     if (isReady()) {
-      try { await SB.createVoucher(entry); } catch(e) { console.error(e); }
+      try { await SB.update(trxId, { transfer_to: val }); } catch(e) { console.error(e); }
     }
-    setVouchers(p=>[{...entry, id:Date.now(), period}, ...p]);
-    setForm(emptyForm);
-    setShowForm(false);
+    setEditId(null);
     setSaving(false);
   };
 
-  const del = async (id) => {
-    if (!window.confirm("Hapus entri ini?")) return;
-    setDeleting(id);
-    if (isReady()) { try { await SB.deleteVoucher(id); } catch(e) { console.error(e); } }
-    setVouchers(p=>p.filter(v=>v.id!==id));
-    setDeleting(null);
-  };
-
-  // Export to CSV (Excel-compatible)
   const exportExcel = () => {
-    const rows = filtered;
-    if (!rows.length) { alert("Tidak ada data untuk diekspor"); return; }
-    const headers = ["Period","Bank Voucher No","Doc No","Klik Date","Text","Transfer To","Amount"];
-    const csvRows = [headers, ...rows.map(r=>[
-      r.period, r.bankVoucherNo, r.docNo, r.klikDate, r.text, r.transferTo, r.amount
-    ])];
-    const csv = csvRows.map(r=>r.map(c=>`"${String(c||"").replace(/"/g,'""')}"`).join(",")).join("\n");
-    const blob = new Blob(["\uFEFF"+csv], {type:"text/csv;charset=utf-8;"});
+    if (!filtered.length) { alert("Tidak ada data untuk diekspor"); return; }
+    const headers = ["Period","Bank Voucher No","Doc No","Klik Date (Lunas)","Text","Transfer To","Amount","Ref ID","Pemohon"];
+    const rows = filtered.map(d=>[
+      (d.settledDate||"").slice(0,7),
+      d.bankVoucherNo||"",
+      d.docNo||"",
+      d.settledDate||"",
+      d.sapText||"",
+      d.transferTo||d.accountName||"",
+      d.amount,
+      d.id,
+      d.submitter,
+    ]);
+    const csv = [headers,...rows].map(r=>r.map(c=>`"${String(c||"").replace(/"/g,'""')}"`).join(",")).join("\n");
+    const blob = new Blob(["\uFEFF"+csv],{type:"text/csv;charset=utf-8;"});
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href=url; a.download=`filing_voucher_${filterMonth}.csv`; a.click();
     URL.revokeObjectURL(url);
   };
 
-  // Link trxId to a transaction for quick reference
-  const trxRef = (trxId) => data.find(d=>d.id===trxId);
-
-  const filtered = vouchers.filter(v=>v.period===filterMonth);
-  const totalFiltered = filtered.reduce((a,v)=>a+(parseFloat(v.amount)||0),0);
-
-  // Month options from existing vouchers + current month
-  const months = [...new Set([thisMonth(), ...vouchers.map(v=>v.period)])].sort().reverse();
-
   return (
     <div>
-      {/* Header bar */}
+      {incomplete.length>0 && (
+        <div className="al aw mb4"><Ic n="alert" s={14} c="#d97706"/>
+          <span><strong>{incomplete.length} transaksi</strong> bulan ini belum lengkap (Doc No / Text kosong) — lengkapi di detail transaksi saat pembayaran.</span>
+        </div>
+      )}
+
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14,flexWrap:"wrap",gap:10}}>
         <div style={{display:"flex",gap:10,alignItems:"center",flexWrap:"wrap"}}>
           <select value={filterMonth} onChange={e=>setFilterMonth(e.target.value)} style={{minWidth:140}}>
             {months.map(m=><option key={m} value={m}>{m}</option>)}
           </select>
-          <span style={{fontSize:13,color:"var(--i3)",fontWeight:600}}>{filtered.length} entri · {rp(totalFiltered)}</span>
+          <span style={{fontSize:13,color:"var(--i3)",fontWeight:600}}>{filtered.length} transaksi · {rp(total)}</span>
         </div>
-        <div style={{display:"flex",gap:8}}>
-          <button className="btn bo sm" onClick={exportExcel}><Ic n="list" s={12}/>Export Excel</button>
-          <button className="btn bp sm" onClick={()=>setShowForm(v=>!v)}><Ic n="plus" s={12}/>{showForm?"Tutup":"+ Tambah Entri"}</button>
-        </div>
+        <button className="btn bo sm" onClick={exportExcel}><Ic n="list" s={12}/>Export Excel</button>
       </div>
 
-      {/* Add form */}
-      {showForm && (
-        <div className="card" style={{marginBottom:14}}>
-          <div className="ch"><h3>Tambah Entri Filing Voucher</h3></div>
-          <div className="cb">
-            <div className="fg fg2 mb4">
-              <div>
-                <label className="fl">Klik Date (Tgl BCA) <span style={{color:"var(--rd)"}}>*</span></label>
-                <input type="date" value={form.klikDate} onChange={e=>set("klikDate",e.target.value)}/>
-                <p style={{fontSize:11,color:"var(--i3)",marginTop:3}}>Period otomatis: <strong>{period}</strong></p>
-              </div>
-              <div>
-                <label className="fl">Bank Voucher No. <span style={{color:"var(--rd)"}}>*</span></label>
-                <input value={form.bankVoucherNo} onChange={e=>set("bankVoucherNo",e.target.value)} placeholder="Dari SAP"/>
-              </div>
-            </div>
-            <div className="fg fg2 mb4">
-              <div>
-                <label className="fl">Doc No. <span style={{color:"var(--rd)"}}>*</span></label>
-                <input value={form.docNo} onChange={e=>set("docNo",e.target.value)} placeholder="Dari SAP"/>
-              </div>
-              <div>
-                <label className="fl">Amount <span style={{color:"var(--rd)"}}>*</span></label>
-                <input type="number" value={form.amount} onChange={e=>set("amount",e.target.value)} placeholder="0"/>
-              </div>
-            </div>
-            <div className="fg mb4">
-              <label className="fl">Text <span style={{color:"var(--rd)"}}>*</span></label>
-              <input value={form.text} onChange={e=>set("text",e.target.value)} placeholder="Deskripsi dari SAP"/>
-            </div>
-            <div className="fg mb4">
-              <label className="fl">Transfer To <span style={{color:"var(--rd)"}}>*</span></label>
-              <input value={form.transferTo} onChange={e=>set("transferTo",e.target.value)} placeholder="Nama penerima (otomatis dari Atas Nama jika pilih pengajuan)"/>
-              {form.trxId && form.transferTo && <p style={{fontSize:11,color:"var(--gn)",marginTop:3}}>✓ Diambil dari Atas Nama karyawan — bisa diedit jika berbeda</p>}
-              {form.trxId && !form.transferTo && <p style={{fontSize:11,color:"var(--am)",marginTop:3}}>⚠️ Karyawan belum isi Atas Nama rekening — isi manual</p>}
-            </div>
-            <div className="fg mb4">
-              <label className="fl">Link ke Pengajuan <span style={{color:"var(--i3)",fontWeight:400}}>(opsional)</span></label>
-              <select value={form.trxId} onChange={e=>handleTrxSelect(e.target.value)}>
-                <option value="">— Pilih pengajuan (opsional) —</option>
-                {data.filter(d=>["processing","awaiting_oer","paid"].includes(d.status)).map(d=>(
-                  <option key={d.id} value={d.id}>{d.id} · {d.submitter} · {rp(d.amount)}</option>
-                ))}
-              </select>
-            </div>
-            <div style={{display:"flex",gap:9,justifyContent:"flex-end"}}>
-              <button className="btn bo sm" onClick={()=>{setForm(emptyForm);setShowForm(false);}}>Batal</button>
-              <button className="btn bp" onClick={save} disabled={saving}>{saving?"Menyimpan...":"Simpan Entri"}</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Table */}
       <div className="card">
         <div className="tw">
-          {loading ? <div className="empty"><p>Memuat data...</p></div> : (
-          <table>
-            <thead><tr>
-              <th>Period</th><th>Bank Voucher No</th><th>Doc No</th>
-              <th>Klik Date</th><th>Text</th><th>Transfer To</th>
-              <th>Amount</th><th>Ref</th><th></th>
-            </tr></thead>
-            <tbody>
-              {filtered.length===0 && (
-                <tr><td colSpan={9}><div className="empty" style={{padding:"20px 0"}}><p>Belum ada entri untuk {filterMonth}</p></div></td></tr>
-              )}
-              {filtered.map(v=>{
-                const ref = v.trxId ? trxRef(v.trxId) : null;
-                return (
-                  <tr key={v.id}>
-                    <td style={{fontFamily:"monospace",fontSize:12}}>{v.period}</td>
-                    <td style={{fontFamily:"monospace",fontSize:12,color:"var(--tl)",fontWeight:700}}>{v.bankVoucherNo}</td>
-                    <td style={{fontFamily:"monospace",fontSize:12}}>{v.docNo}</td>
-                    <td style={{fontSize:12}}>{fd(v.klikDate)}</td>
-                    <td><div className="trunc" style={{maxWidth:160,fontSize:12}}>{v.text}</div></td>
-                    <td style={{fontSize:12,fontWeight:600}}>{v.transferTo}</td>
-                    <td className="bold">{rp(v.amount)}</td>
-                    <td>{ref ? <span style={{fontSize:10,fontFamily:"monospace",color:"var(--tl)",background:"var(--tlb)",padding:"2px 6px",borderRadius:4}}>{ref.id}</span> : <span style={{color:"var(--i4)",fontSize:11}}>—</span>}</td>
+          {filtered.length===0
+            ? <div className="empty" style={{padding:"24px 0"}}><p>Belum ada transaksi lunas di {filterMonth}</p></div>
+            : (
+            <table>
+              <thead><tr>
+                <th>Period</th><th>Bank Voucher No</th><th>Doc No</th>
+                <th>Klik Date</th><th>Text (SAP)</th><th>Transfer To</th>
+                <th>Amount</th><th>Pemohon</th>
+              </tr></thead>
+              <tbody>
+                {filtered.map(d=>(
+                  <tr key={d.id} style={{background:(!d.docNo||!d.sapText)?"#fef9c3":""}}>
+                    <td style={{fontFamily:"monospace",fontSize:12}}>{(d.settledDate||"").slice(0,7)||"—"}</td>
+                    <td style={{fontFamily:"monospace",fontSize:12,color:"var(--tl)",fontWeight:700}}>{d.bankVoucherNo}</td>
+                    <td style={{fontFamily:"monospace",fontSize:12,color:d.docNo?"var(--ink)":"var(--rd)"}}>{d.docNo||<span style={{fontSize:11}}>⚠ kosong</span>}</td>
+                    <td style={{fontSize:12}}>{fd(d.settledDate)}</td>
+                    <td style={{color:d.sapText?"var(--ink)":"var(--rd)"}}><div className="trunc" style={{maxWidth:150,fontSize:12}}>{d.sapText||<span style={{fontSize:11}}>⚠ kosong</span>}</div></td>
                     <td>
-                      <button onClick={()=>del(v.id)} disabled={deleting===v.id} style={{background:"none",border:"none",cursor:"pointer",color:"var(--rd)",padding:4,opacity:deleting===v.id?0.4:1}}>
-                        <Ic n="x" s={13} c="var(--rd)"/>
-                      </button>
+                      {editId===d.id
+                        ? <div style={{display:"flex",gap:4}}>
+                            <input value={editTransferTo} onChange={e=>setEditTransferTo(e.target.value)} style={{width:120,fontSize:12,padding:"3px 6px"}} autoFocus/>
+                            <button className="btn bg xs" onClick={()=>saveTransferTo(d.id,editTransferTo)} disabled={saving}><Ic n="check" s={10}/></button>
+                            <button className="btn bo xs" onClick={()=>setEditId(null)}><Ic n="x" s={10}/></button>
+                          </div>
+                        : <div style={{display:"flex",gap:4,alignItems:"center"}}>
+                            <span style={{fontSize:12,fontWeight:600}}>{d.transferTo||d.accountName||<span style={{color:"var(--i4)",fontStyle:"italic"}}>—</span>}</span>
+                            <button onClick={()=>{setEditId(d.id);setEditTransferTo(d.transferTo||d.accountName||"");}} style={{background:"none",border:"none",cursor:"pointer",padding:2,color:"var(--tl)"}}>✏️</button>
+                          </div>
+                      }
                     </td>
+                    <td className="bold">{rp(d.amount)}</td>
+                    <td><div style={{fontSize:12,fontWeight:600}}>{d.submitter}</div><div style={{fontSize:10,color:"var(--i3)"}}>{d.dept}</div></td>
                   </tr>
-                );
-              })}
-            </tbody>
-            {filtered.length>0 && (
+                ))}
+              </tbody>
               <tfoot>
                 <tr style={{background:"var(--ln2)",fontWeight:700}}>
                   <td colSpan={6} style={{textAlign:"right",fontSize:13,paddingRight:12}}>Total {filterMonth}</td>
-                  <td className="bold" style={{fontSize:14}}>{rp(totalFiltered)}</td>
-                  <td colSpan={2}/>
+                  <td className="bold" style={{fontSize:14}}>{rp(total)}</td>
+                  <td/>
                 </tr>
               </tfoot>
-            )}
-          </table>
+            </table>
           )}
         </div>
       </div>
@@ -2136,8 +2055,10 @@ function OerReconBox({ trx, rc, isFin, isOwner, onAction }) {
 // DETAIL MODAL
 // ═══════════════════════════════════════════════════════════════
 function DetailModal({ trx, user, onClose, onAction, onEdit }) {
-  const [note,setNote]       = useState("");
+  const [note,setNote]           = useState("");
   const [voucherNo,setVoucherNo] = useState(trx.bankVoucherNo||"");
+  const [docNo,setDocNo]         = useState(trx.docNo||"");
+  const [sapText,setSapText]     = useState(trx.sapText||"");
   const busy = false;
   const [editing,setEditing] = useState(false);
   const isFin = user.role==="finance";
@@ -2145,7 +2066,7 @@ function DetailModal({ trx, user, onClose, onAction, onEdit }) {
   const isOwner = user.role==="employee" && trx.submitter===user.name;
   const canEdit = (isFin || isGA || (isOwner && trx.status!=="paid" && trx.status!=="rejected"));
 
-  const act = (action, n, voucher) => {
+  const act = (action, n, voucher, dn, st) => {
     let supabaseStatus;
     if (action === "pay") {
       supabaseStatus = trx.type === "cash_advance" ? "awaiting_oer" : "paid";
@@ -2153,8 +2074,8 @@ function DetailModal({ trx, user, onClose, onAction, onEdit }) {
       const sm = {approve:"approved",reject:"rejected",process:"processing",doc_complete:"doc_complete"};
       supabaseStatus = sm[action] || action;
     }
-    onAction(trx.id, action, n, trx.type, voucher||"");
-    if (isReady()) API.update(trx.id, supabaseStatus, n, voucher||"")
+    onAction(trx.id, action, n, trx.type, voucher||"", dn||"", st||"");
+    if (isReady()) API.update(trx.id, supabaseStatus, n, voucher||"", dn||"", st||"")
       .catch(e=>console.error("sync error:",e));
   };
   const [norek, setNorek] = useState("");
@@ -2285,20 +2206,35 @@ function DetailModal({ trx, user, onClose, onAction, onEdit }) {
               {isFin&&trx.status==="processing"&&(
                 <div style={{marginTop:16,padding:14,background:"var(--ln2)",borderRadius:"var(--r2)",border:"1px solid var(--ln)"}}>
                   <p style={{fontSize:13,fontWeight:700,marginBottom:9}}>Konfirmasi Pembayaran</p>
-                  {(trx.bankAccount||trx.accountName) && (
-                    <div style={{marginBottom:10,padding:"9px 12px",background:"#eff6ff",border:"1px solid #93c5fd",borderRadius:"var(--r3)"}}>
-                      <p style={{fontSize:11,fontWeight:700,color:"#1e3a8a",marginBottom:3}}>Info Rekening Karyawan</p>
-                      <p style={{fontSize:12.5,fontFamily:"monospace",color:"#1e40af"}}>{trx.bankAccount||"—"}</p>
-                      <p style={{fontSize:11.5,color:"#1e40af"}}>a.n. {trx.accountName||"—"}</p>
+                  {/* Info rekening karyawan */}
+                  {(trx.bankAccount||trx.accountName) ? (
+                    <div style={{marginBottom:12,padding:"10px 12px",background:"#eff6ff",border:"1px solid #93c5fd",borderRadius:"var(--r3)"}}>
+                      <p style={{fontSize:11,fontWeight:700,color:"#1e3a8a",marginBottom:4}}>💳 Transfer ke:</p>
+                      <p style={{fontSize:13,fontFamily:"monospace",fontWeight:700,color:"#1e40af"}}>{trx.bankAccount||"—"}</p>
+                      <p style={{fontSize:12,color:"#1e40af"}}>a.n. <strong>{trx.accountName||"—"}</strong></p>
+                    </div>
+                  ) : (
+                    <div style={{marginBottom:12,padding:"8px 12px",background:"#fef9c3",border:"1px solid #fde047",borderRadius:"var(--r3)"}}>
+                      <p style={{fontSize:11,color:"#854d0e"}}>⚠️ Karyawan belum isi info rekening — minta karyawan update di Dashboard mereka</p>
                     </div>
                   )}
-                  <div className="fg mb3">
-                    <label className="fl" style={{fontSize:12}}>Bank Voucher No. <span style={{color:"var(--rd)",fontWeight:700}}>*</span> <span style={{color:"var(--i3)",fontWeight:400}}>(dari SAP)</span></label>
-                    <input value={voucherNo} onChange={e=>setVoucherNo(e.target.value)} placeholder="Contoh: BV-2026-00123" style={{marginBottom:0}}/>
+                  <div className="fg fg2 mb3">
+                    <div>
+                      <label className="fl" style={{fontSize:12}}>Bank Voucher No. <span style={{color:"var(--rd)"}}>*</span> <span style={{color:"var(--i3)",fontWeight:400}}>(SAP)</span></label>
+                      <input value={voucherNo} onChange={e=>setVoucherNo(e.target.value)} placeholder="BV-2026-00123" style={{marginBottom:0}}/>
+                    </div>
+                    <div>
+                      <label className="fl" style={{fontSize:12}}>Doc No. <span style={{color:"var(--rd)"}}>*</span> <span style={{color:"var(--i3)",fontWeight:400}}>(SAP)</span></label>
+                      <input value={docNo} onChange={e=>setDocNo(e.target.value)} placeholder="Doc No dari SAP" style={{marginBottom:0}}/>
+                    </div>
                   </div>
-                  <textarea value={note} onChange={e=>setNote(e.target.value)} placeholder="No. referensi transfer (opsional)..." rows={2} style={{marginBottom:9}}/>
-                  <button className="btn bg" onClick={()=>act("pay",note,voucherNo)} disabled={busy||!voucherNo.trim()}>{busy?<span className="sp2"/>:<Ic n="check" s={13}/>}Tandai Sudah Dibayar</button>
-                  {!voucherNo.trim() && <p style={{fontSize:11,color:"var(--am)",marginTop:6}}>⚠️ Isi Bank Voucher No. terlebih dahulu</p>}
+                  <div className="fg mb3">
+                    <label className="fl" style={{fontSize:12}}>Text <span style={{color:"var(--rd)"}}>*</span> <span style={{color:"var(--i3)",fontWeight:400}}>(deskripsi dari SAP)</span></label>
+                    <input value={sapText} onChange={e=>setSapText(e.target.value)} placeholder="Deskripsi transaksi dari SAP" style={{marginBottom:0}}/>
+                  </div>
+                  <textarea value={note} onChange={e=>setNote(e.target.value)} placeholder="Catatan tambahan (opsional)..." rows={2} style={{marginBottom:9}}/>
+                  <button className="btn bg" onClick={()=>act("pay",note,voucherNo,docNo,sapText)} disabled={busy||!voucherNo.trim()||!docNo.trim()}>{busy?<span className="sp2"/>:<Ic n="check" s={13}/>}Tandai Sudah Dibayar</button>
+                  {(!voucherNo.trim()||!docNo.trim()) && <p style={{fontSize:11,color:"var(--am)",marginTop:6}}>⚠️ Isi Bank Voucher No. dan Doc No. terlebih dahulu</p>}
                 </div>
               )}
               {/* Employee: submit OER for this CA */}
@@ -2473,7 +2409,7 @@ export default function App() {
     return () => clearInterval(timer);
   }, []);
 
-  const handleAction = (id, action, noteOrData, trxType, voucherNo) => {
+  const handleAction = (id, action, noteOrData, trxType, voucherNo, docNo, sapText) => {
     // Optimistic update dulu — UI langsung berubah tanpa tunggu Sheets
     setData(prev=>prev.map(d=>{
       if (d.id!==id) return d;
@@ -2501,7 +2437,7 @@ export default function App() {
         approve:  {status:"approved"},
         reject:   {status:"rejected",   financeNote:noteOrData},
         process:  {status:"processing", financeNote:noteOrData, bankVoucherNo:voucherNo||""},
-        pay:      {status: (trxType||d.type)==="cash_advance" ? "awaiting_oer" : "paid", settledDate:today(), financeNote:noteOrData, bankVoucherNo:voucherNo||d.bankVoucherNo||""},
+        pay:      {status: (trxType||d.type)==="cash_advance" ? "awaiting_oer" : "paid", settledDate:today(), financeNote:noteOrData, bankVoucherNo:voucherNo||d.bankVoucherNo||"", docNo:docNo||d.docNo||"", sapText:sapText||d.sapText||""},
         settle:   {settled:true, status:"settled", settledDate:today(), financeNote:noteOrData},
       };
       return {...d, ...m[action]};
@@ -2528,6 +2464,16 @@ export default function App() {
   const handleEdit = (updated) => {
     setData(prev => prev.map(d => d.id===updated.id ? updated : d));
     showToast("✓ Perubahan disimpan");
+  };
+
+  // Filing voucher: update transferTo dari FilingPage
+  const handleSaveDoc = (id, patch) => {
+    setData(prev => prev.map(d => d.id===id ? {...d,...patch} : d));
+    if (isReady() && patch.transferTo !== undefined) {
+      API.update(id, null, null, null, null, null).catch(()=>{});
+      // Update transfer_to langsung via patch
+      SB.req("PATCH","transactions",{transfer_to: patch.transferTo},{"id":"eq."+id}).catch(()=>{});
+    }
   };
 
   const handleSubmit = async (entry) => {
@@ -2618,7 +2564,7 @@ export default function App() {
                 {page==="admin_jkt_queue" && <AdminJKTQueue data={data} onAction={handleAction} onSel={id=>setSelId(id)} user={user}/>}
                 {page==="ga_queue"        && <GAQueue data={data} onAction={handleAction} onSel={id=>setSelId(id)} user={user}/>}
                 {page==="monitor"   && <MonitorPage data={data} onSel={id=>setSelId(id)} onAction={handleAction}/>}
-                {page==="filing"    && <FilingPage data={data}/>}
+                {page==="filing"    && <FilingPage data={data} onSaveDoc={handleSaveDoc}/>}
                 {page==="settings"  && <SettingsPage onSave={()=>showToast("✓ Pengaturan disimpan")}/>}
                 {page==="overdue"   && (
                   <div>
