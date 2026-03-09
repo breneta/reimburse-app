@@ -33,7 +33,7 @@ const STATUS = {
   doc_complete:      { label:"Dokumen Lengkap ✓",      color:"#065f46", bg:"#ecfdf5", dot:"#10b981" },
   approved:          { label:"Disetujui",               color:"#1e40af", bg:"#eff6ff", dot:"#3b82f6" },
   processing:        { label:"Diproses Finance",       color:"#5b21b6", bg:"#f5f3ff", dot:"#8b5cf6" },
-  paid:              { label:"CA Dicairkan",            color:"#065f46", bg:"#ecfdf5", dot:"#10b981" },
+  paid:              { label:"Lunas",                   color:"#065f46", bg:"#ecfdf5", dot:"#10b981" },
   awaiting_oer:      { label:"Menunggu OER",            color:"#854d0e", bg:"#fef9c3", dot:"#ca8a04" },
   kurang_bayar:      { label:"Kurang Bayar ↑",          color:"#1e3a5f", bg:"#dbeafe", dot:"#3b82f6" },
   lebih_bayar:       { label:"Lebih Bayar ↓",           color:"#4c1d95", bg:"#ede9fe", dot:"#8b5cf6" },
@@ -2010,7 +2010,7 @@ function DetailModal({ trx, user, onClose, onAction, onEdit }) {
                     <p style={{fontSize:13,fontWeight:800,color:"#78350f"}}>📋 Submit OER untuk CA ini</p>
                     <button className="btn bo sm" onClick={()=>setShowOerForm(v=>!v)} style={{fontSize:11}}>{showOerForm?"Sembunyikan":"Isi OER"}</button>
                   </div>
-                  <p style={{fontSize:11,color:"#92400e"}}>CA dicairkan {rp(trx.amount)} — isi pengeluaran aktual di bawah untuk rekonsiliasi otomatis.</p>
+                  <p style={{fontSize:11,color:"#92400e"}}>CA sebesar {rp(trx.amount)} sudah dicairkan — isi pengeluaran aktual untuk rekonsiliasi.</p>
                   {showOerForm&&(
                     <div style={{marginTop:12}}>
                       <div style={{border:"1px solid #fde68a",borderRadius:"var(--r3)",overflow:"hidden",marginBottom:10}}>
@@ -2210,7 +2210,7 @@ export default function App() {
     }));
     const msgs = {
       approve:"✓ Pengajuan disetujui", reject:"Pengajuan ditolak",
-      process:"✓ Mulai diproses", pay:"✓ CA dicairkan — menunggu OER",
+      process:"✓ Mulai diproses", pay:"✓ Pembayaran dikonfirmasi — Lunas",
       settle:"✓ Settlement dikonfirmasi — CA lunas",
       oer_submitted:"✓ OER berhasil disubmit",
       edit_oer:"✓ OER dikoreksi", send_confirm:"✓ Nominal dikirim ke karyawan untuk konfirmasi",
