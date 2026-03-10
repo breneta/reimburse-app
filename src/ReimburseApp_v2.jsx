@@ -89,15 +89,17 @@ const workdaysSinceEnd = (dateEnd) => {
   return days;
 };
 const isOverdue = (d) => {
-  if (d.type==="cash_advance" && !d.settled && !["rejected","paid"].includes(d.status) && d.dateEnd) {
+  if (d.type==="cash_advance" && !d.settled && !["rejected","paid","settled"].includes(d.status) && d.dateEnd) {
     return workdaysSinceEnd(d.dateEnd) > 5;
   }
-  // OER (reimburse) juga 5 hari kerja setelah trip
-  if (d.type==="reimburse" && d.status==="pending" && d.dateEnd) {
+  if (d.type==="reimburse" && ["pending","doc_received_lk","doc_sent_jkt","doc_received_jkt"].includes(d.status) && d.dateEnd) {
     return workdaysSinceEnd(d.dateEnd) > 5;
   }
   return false;
 };
+
+// Tambahkan flag isLate tanpa mengubah status
+const withLateFlagOnly = (d) => ({ ...d, isLate: isOverdue(d) });
 
 // ── Supabase REST API ────────────────────────────────────────
 const SB = {
@@ -521,6 +523,7 @@ const Ic = ({ n, s=16, c="currentColor" }) => (
   <svg width={s} height={s} fill="none" stroke={c} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d={IP[n]||""}/></svg>
 );
 const SBadge = ({ s }) => { const c=STATUS[s]||{label:s,color:"#475569",bg:"#f1f5f9"}; return <span className="badge" style={{color:c.color,background:c.bg}}>{c.label}</span>; };
+const LateBadge = ({ d }) => d.isLate ? <span className="badge" style={{color:"#9f1239",background:"#fff1f2",marginLeft:4}}>⚠ Terlambat</span> : null;
 const TTag = ({ t }) => t==="cash_advance"?<span className="tag tca">Cash Advance</span>:<span className="tag tre">Reimburse</span>;
 
 // ── Local account store (localStorage fallback) ──────────────
@@ -789,7 +792,7 @@ function Dashboard({ data, user, nav, onUpdateUser }) {
   const mine    = user.role==="employee" ? data.filter(d=>d.submitter===user.name) : data;
   const pending = data.filter(d=>d.status==="pending");
   const approved= data.filter(d=>["approved","doc_complete"].includes(d.status));
-  const overdue = data.filter(d=>d.status==="overdue");
+  const overdue = data.filter(d=>d.isLate===true);
   const totalRp = mine.reduce((a,d)=>a+d.amount,0);
   const paidRp  = mine.filter(d=>d.status==="paid").reduce((a,d)=>a+d.amount,0);
   const active  = mine.filter(d=>["pending","approved","processing"].includes(d.status));
@@ -870,7 +873,7 @@ function Dashboard({ data, user, nav, onUpdateUser }) {
               <td><TTag t={d.type}/></td>
               <td><div className="trunc" style={{maxWidth:180}}>{d.purpose}</div></td>
               <td className="bold">{rp(d.amount)}</td>
-              <td><SBadge s={d.status}/></td>
+              <td><SBadge s={d.status}/><LateBadge d={d}/></td>
             </tr>
           ))}</tbody>
         </table>{mine.length===0&&<div className="empty"><p>Belum ada pengajuan</p></div>}</div>
@@ -1091,7 +1094,7 @@ function ListPage({ data, user, onSel }) {
               <td style={{fontSize:12,color:"var(--i3)"}}>{d.destination}</td>
               <td style={{fontSize:11,color:"var(--i3)"}}>{fd(d.dateStart)}<br/>{fd(d.dateEnd)}</td>
               <td className="bold">{rp(d.amount)}</td>
-              <td><SBadge s={d.status}/></td>
+              <td><SBadge s={d.status}/><LateBadge d={d}/></td>
             </tr>
           ))}</tbody>
         </table>{rows.length===0&&<div className="empty"><Ic n="list" s={36}/><p style={{marginTop:10}}>Tidak ada data</p></div>}
@@ -1400,7 +1403,7 @@ function MonitorPage({ data, onSel, onAction }) {
   const totalRp = data.reduce((a,d)=>a+d.amount,0);
   const paidRp  = data.filter(d=>d.status==="paid").reduce((a,d)=>a+d.amount,0);
   const pct = totalRp?Math.round(paidRp/totalRp*100):0;
-  const overdue = data.filter(d=>d.status==="overdue");
+  const overdue = data.filter(d=>d.isLate===true);
   const caOut   = data.filter(d=>d.type==="cash_advance"&&!d.settled&&!["rejected","settled"].includes(d.status));
   const needSettle = data.filter(d=>d.type==="cash_advance"&&["kurang_bayar","lebih_bayar"].includes(d.status)&&!d.settled);
 
@@ -1505,7 +1508,7 @@ function MonitorPage({ data, onSel, onAction }) {
               <td style={{cursor:"pointer"}} onClick={()=>onSel(d.id)}><div className="trunc" style={{maxWidth:130}}>{d.purpose}</div></td>
               <td className="bold" style={{cursor:"pointer"}} onClick={()=>onSel(d.id)}>{rp(d.amount)}</td>
               <td style={{fontSize:12,fontFamily:"monospace",color:d.bankVoucherNo?"var(--tl)":"var(--i4)"}}>{d.bankVoucherNo||"—"}</td>
-              <td><SBadge s={d.status}/></td>
+              <td><SBadge s={d.status}/><LateBadge d={d}/></td>
               <td onClick={e=>e.stopPropagation()}>
                 {["doc_complete","approved"].includes(d.status) && (
                   <button className="btn bp xs" onClick={()=>{
@@ -1544,7 +1547,7 @@ function MonitorPage({ data, onSel, onAction }) {
                     </div>
                   )}
                 </div>
-                <div style={{textAlign:"right"}}><div className="bold">{rp(d.amount)}</div><SBadge s={d.status}/></div>
+                <div style={{textAlign:"right"}}><div className="bold">{rp(d.amount)}</div><SBadge s={d.status}/><LateBadge d={d}/></div>
               </div>
             ))}
             {caOut.length===0&&<div className="empty" style={{padding:"20px 0"}}><p>Semua CA sudah settle 🎉</p></div>}
@@ -2174,7 +2177,7 @@ function DetailModal({ trx, user, onClose, onAction, onEdit }) {
           ) : (
             <>
               <div style={{display:"flex",flexWrap:"wrap",gap:7,alignItems:"center",padding:"9px 13px",background:"var(--ln2)",borderRadius:"var(--r2)",marginBottom:16}}>
-                <TTag t={trx.type}/><SBadge s={trx.status}/><span style={{marginLeft:"auto",fontSize:11,color:"var(--i3)"}}>Diajukan {fd(trx.submitted)}</span>
+                <TTag t={trx.type}/><SBadge s={trx.status}/><LateBadge d={trx}/><span style={{marginLeft:"auto",fontSize:11,color:"var(--i3)"}}>Diajukan {fd(trx.submitted)}</span>
               </div>
               {trx.status==="rejected"&&trx.financeNote&&<div className="al ae mb4"><Ic n="x" s={13} c="#dc2626"/><span><strong>Alasan:</strong> {trx.financeNote}</span></div>}
               {trx.financeNote&&trx.status!=="rejected"&&<div className="al ab mb4"><Ic n="bell" s={13} c="#2563eb"/><span>{trx.financeNote}</span></div>}
@@ -2207,6 +2210,7 @@ function DetailModal({ trx, user, onClose, onAction, onEdit }) {
               </div>
 
               {trx.notes&&<div className="al at mb4"><Ic n="bell" s={13} c="var(--tl)"/><span>{trx.notes}</span></div>}
+              {trx.isLate&&<div className="al ae mb4"><Ic n="alert" s={13} c="#dc2626"/><span><strong>⚠ Terlambat mengajukan</strong> — melewati batas 5 hari kerja setelah trip selesai ({fd(trx.dateEnd)}). Pengajuan tetap dapat diproses seperti biasa.</span></div>}
 
               {/* ── REKONSILIASI CA vs OER ── */}
               {trx.type==="cash_advance" && rc && (
@@ -2391,7 +2395,7 @@ function DetailModal({ trx, user, onClose, onAction, onEdit }) {
 export default function App() {
   const [user,setUser]       = useState(null);
   const [page,setPage]       = useState("dashboard");
-  const [data,setData]       = useState(DEMO.map(d=>isOverdue(d)?{...d,status:"overdue"}:d));
+  const [data,setData]       = useState(DEMO.map(d=>withLateFlagOnly(d)));
   const [selId,setSelId]     = useState(null);
   const [toast,setToast]     = useState(null);
   const [sideOpen,setSideOpen]=useState(false);
@@ -2407,11 +2411,8 @@ export default function App() {
         (accs||[]).forEach(a=>{ accMap[a.name] = a; });
         setData(res.map(d=>{
           const acc = accMap[d.submitter];
-          return isOverdue({...d,
-            bankAccount: d.bankAccount || acc?.bank_account || "",
-            accountName: d.accountName || acc?.account_name || "",
-          }) ? {...d, bankAccount: acc?.bank_account||"", accountName: acc?.account_name||"", status:"overdue"}
-             : {...d, bankAccount: acc?.bank_account||"", accountName: acc?.account_name||""};
+          const enriched = {...d, bankAccount: acc?.bank_account||"", accountName: acc?.account_name||""};
+          return withLateFlagOnly(enriched);
         }));
       }
       setLoading(false);
@@ -2430,7 +2431,7 @@ export default function App() {
     if (!isReady()) return;
     const rows = await API.getAll();
     if (Array.isArray(rows) && rows.length >= 0) {
-      setData(rows.map(d=>isOverdue(d)?{...d,status:"overdue"}:d));
+      setData(rows.map(d=>withLateFlagOnly(d)));
     }
   };
 
@@ -2518,20 +2519,20 @@ export default function App() {
 
   const handleSubmit = async (entry) => {
     // Tambah ke local state dulu (instan)
-    setData(p=>[entry,...p].map(d=>isOverdue(d)?{...d,status:"overdue"}:d));
+    setData(p=>[entry,...p].map(d=>withLateFlagOnly(d)));
     showToast(`✓ ${entry.id} berhasil dikirim ke Admin`);
     setPage("list");
     // Kemudian reload dari Supabase untuk sync semua user
     if (isReady()) {
       await new Promise(r=>setTimeout(r,500));
       const rows = await API.getAll();
-      if (Array.isArray(rows)) setData(rows.map(d=>isOverdue(d)?{...d,status:"overdue"}:d));
+      if (Array.isArray(rows)) setData(rows.map(d=>withLateFlagOnly(d)));
     }
   };
   const nav = (p, id) => { if (id) setSelId(id); setPage(p); setSideOpen(false); };
 
   const aCt = data.filter(d=>["approved","doc_complete"].includes(d.status)).length;
-  const oCt = data.filter(d=>d.status==="overdue").length;
+  const oCt = data.filter(d=>d.isLate===true).length;
   const sel = data.find(d=>d.id===selId);
 
   const NAV = {
@@ -2585,7 +2586,7 @@ export default function App() {
                 {isReady()?"Supabase ✓":"Tidak terhubung"}
               </span>
               {user.role==="employee"&&page!=="submit"&&<button className="btn bp sm" onClick={()=>nav("submit")}><Ic n="plus" s={13}/>Ajukan</button>}
-              {isReady()&&<button className="btn bo sm" title="Refresh data" onClick={()=>{setLoading(true);API.getAll().then(r=>{if(Array.isArray(r))setData(r.map(d=>isOverdue(d)?{...d,status:"overdue"}:d));setLoading(false);});}}><Ic n="refresh" s={13}/></button>}
+              {isReady()&&<button className="btn bo sm" title="Refresh data" onClick={()=>{setLoading(true);API.getAll().then(r=>{if(Array.isArray(r))setData(r.map(d=>withLateFlagOnly(d)));setLoading(false);});}}><Ic n="refresh" s={13}/></button>}
             </div>
           </div>
 
@@ -2623,7 +2624,7 @@ export default function App() {
                               <td style={{fontSize:12}}>{fd(d.dateEnd)}</td>
                               <td>{late>0?<span style={{fontWeight:800,color:"var(--rd)",fontSize:12}}>+{late} hari</span>:<span style={{color:"var(--am)",fontWeight:700,fontSize:12}}>Dalam batas</span>}</td>
                               <td className="bold">{rp(d.amount)}</td>
-                              <td><SBadge s={d.status}/></td>
+                              <td><SBadge s={d.status}/><LateBadge d={d}/></td>
                             </tr>
                           );
                         })}</tbody>
