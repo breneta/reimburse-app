@@ -149,6 +149,7 @@ const SB = {
       docNo:r.doc_no||"",
       sapText:r.sap_text||"",
       transferTo:r.transfer_to||"",
+      transferProof:r.transfer_proof||"",
       docRoute:r.doc_route||"admin_jkt",
       adminLkName:r.admin_lk_name||"", adminJktName:r.admin_jkt_name||"",
       gaNote:r.ga_note||"", area:r.area||"Jakarta",
@@ -306,6 +307,9 @@ const SB = {
 const API = {
   getAll:      ()       => SB.getAll(),
   create:      (data)   => SB.create(data),
+  async saveTransferProof(id, base64) {
+    return SB.update(id, { transfer_proof: base64 });
+  },
   update:      (id,s,n,v,dn,st) => SB.updateStatus(id,s,n,v,dn,st),
   settle:      (id,n)   => SB.settle(id,n),
   submitOer:   (id,d,ca)=> SB.submitOer(id,d,ca),
@@ -798,6 +802,14 @@ function Dashboard({ data, user, nav, onUpdateUser }) {
   const active  = mine.filter(d=>["pending","approved","processing"].includes(d.status));
   const pct     = totalRp?Math.min(100,Math.round(paidRp/totalRp*100)):0;
 
+  // Notifikasi khusus karyawan — CA yang harus dikembalikan
+  const harusKembali = user.role==="employee"
+    ? mine.filter(d=>d.type==="cash_advance" && ["awaiting_confirm","kurang_bayar"].includes(d.status) && !d.settled)
+    : [];
+  const menungguKonfirmasi = user.role==="employee"
+    ? mine.filter(d=>d.type==="cash_advance" && d.status==="awaiting_confirm")
+    : [];
+
   const [bankAcc, setBankAcc] = useState(user.bank_account||"");
   const [accName, setAccName] = useState(user.account_name||"");
   const [bankSaving, setBankSaving] = useState(false);
@@ -825,6 +837,30 @@ function Dashboard({ data, user, nav, onUpdateUser }) {
       </div>
 
       {overdue.length>0 && <div className="al ae mb4"><Ic n="alert" s={14} c="#dc2626"/><span><strong>{overdue.length} CA Terlambat</strong> — melewati batas 5 hari kerja!</span></div>}
+
+      {/* 🔴 NOTIFIKASI: Karyawan harus kembalikan uang ke perusahaan */}
+      {menungguKonfirmasi.map(d=>(
+        <div key={d.id} style={{marginBottom:12,padding:"14px 16px",background:"linear-gradient(135deg,#7c3aed 0%,#a855f7 100%)",borderRadius:"var(--r2)",boxShadow:"0 4px 16px rgba(124,58,237,0.3)"}}>
+          <div style={{display:"flex",alignItems:"flex-start",gap:12}}>
+            <div style={{fontSize:24,flexShrink:0}}>🔔</div>
+            <div style={{flex:1}}>
+              <p style={{fontSize:13,fontWeight:800,color:"white",marginBottom:4}}>Tindakan Diperlukan — Cash Advance {d.id}</p>
+              <p style={{fontSize:12,color:"rgba(255,255,255,0.9)",marginBottom:8}}>
+                Finance telah menghitung selisih CA kamu: <strong style={{color:"#fde68a"}}>
+                  {d.oerAmount > d.amount
+                    ? `Perusahaan akan transfer ${rp(d.oerAmount - d.amount)} ke kamu`
+                    : `Kamu perlu mengembalikan ${rp(d.amount - (d.oerAmount||0))} ke perusahaan`}
+                </strong>
+              </p>
+              <p style={{fontSize:11,color:"rgba(255,255,255,0.75)"}}>Buka detail pengajuan untuk konfirmasi nominal dan upload bukti transfer.</p>
+            </div>
+            <button className="btn sm" onClick={()=>nav&&nav("list")} style={{background:"white",color:"#7c3aed",fontWeight:800,flexShrink:0,fontSize:12}}>
+              Lihat →
+            </button>
+          </div>
+        </div>
+      ))}
+
       {user.role==="admin_lk" && data.filter(d=>d.status==="pending").length>0 && <div className="al aw mb4"><Ic n="clock" s={14} c="#d97706"/><span><strong>{data.filter(d=>d.status==="pending").length} pengajuan</strong> menunggu dokumen diterima.</span></div>}
       {user.role==="finance" && approved.length>0 && <div className="al ab mb4"><Ic n="money" s={14} c="#2563eb"/><span><strong>{approved.length} pengajuan</strong> sudah disetujui, siap diproses.</span></div>}
 
@@ -1935,9 +1971,30 @@ function OerReconBox({ trx, rc, isFin, isOwner, onAction }) {
     if (isReady()) API.sendConfirm(trx.id).catch(()=>{});
   };
 
-  const confirmOer = () => {
-    onAction(trx.id, "emp_confirm", {});
-    if (isReady()) API.empConfirm(trx.id).catch(()=>{});
+  // Upload bukti transfer
+  const [proofImg, setProofImg]   = useState(trx.transferProof||"");
+  const [uploading, setUploading] = useState(false);
+  const [uploadErr, setUploadErr] = useState("");
+
+  const handleProofFile = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    if (file.size > 2 * 1024 * 1024) { setUploadErr("Ukuran file maks. 2MB"); return; }
+    if (!file.type.startsWith("image/")) { setUploadErr("Hanya file gambar (JPG/PNG)"); return; }
+    setUploadErr("");
+    const reader = new FileReader();
+    reader.onload = (ev) => setProofImg(ev.target.result);
+    reader.readAsDataURL(file);
+  };
+
+  const confirmOer = async () => {
+    if (rc.isLebih && !proofImg) { setUploadErr("Upload bukti transfer dulu sebelum konfirmasi"); return; }
+    setUploading(true);
+    try {
+      if (proofImg && isReady()) await API.saveTransferProof(trx.id, proofImg).catch(()=>{});
+      onAction(trx.id, "emp_confirm", { transferProof: proofImg });
+      if (isReady()) API.empConfirm(trx.id).catch(()=>{});
+    } finally { setUploading(false); }
   };
 
 
@@ -2050,26 +2107,102 @@ function OerReconBox({ trx, rc, isFin, isOwner, onAction }) {
             {/* Employee: konfirmasi atau keberatan */}
             {isOwner && trx.status==="awaiting_confirm" && (
               <div style={{marginTop:12}}>
-                <div style={{padding:"10px 12px",background:"#fff7ed",borderRadius:"var(--r3)",border:"1px solid #fb923c",marginBottom:10}}>
-                  <p style={{fontSize:12,fontWeight:800,color:"#c2410c",marginBottom:2}}>📩 Finance meminta konfirmasi nominal ini</p>
-                  <p style={{fontSize:12,color:"#9a3412"}}>
-                    {rc.isKurang?`Perusahaan akan transfer ${rp(Math.abs(rc.selisih))} ke kamu`:
-                     rc.isLebih?`Kamu perlu kembalikan ${rp(Math.abs(rc.selisih))} ke perusahaan`:
+                {/* Header konfirmasi */}
+                <div style={{padding:"12px 14px",background:"linear-gradient(135deg,#7c3aed,#a855f7)",borderRadius:"var(--r3)",marginBottom:10,color:"white"}}>
+                  <p style={{fontSize:12,fontWeight:800,marginBottom:4}}>📩 Finance meminta konfirmasi nominal ini</p>
+                  <p style={{fontSize:13,fontWeight:700}}>
+                    {rc.isKurang?`✅ Perusahaan akan transfer ${rp(Math.abs(rc.selisih))} ke kamu`:
+                     rc.isLebih?`⚠️ Kamu perlu kembalikan ${rp(Math.abs(rc.selisih))} ke perusahaan`:
                      "Selisih Rp 0 — tidak ada transfer"}
                   </p>
                   {rc.isLebih&&(
-                    <p style={{fontSize:11,color:"#7c3aed",marginTop:4,fontFamily:"monospace"}}>
-                      Transfer ke: 489-988-9999 a.n. Satya Langgeng Sentosa (BCA)
-                    </p>
+                    <div style={{marginTop:8,padding:"8px 10px",background:"rgba(255,255,255,0.15)",borderRadius:6}}>
+                      <p style={{fontSize:11,fontWeight:700,marginBottom:2}}>Rekening Tujuan:</p>
+                      <p style={{fontSize:12,fontFamily:"monospace",fontWeight:800}}>489-988-9999 a.n. Satya Langgeng Sentosa (BCA)</p>
+                    </div>
                   )}
                 </div>
-                <button className="btn bg" onClick={confirmOer} style={{width:"100%"}}><Ic n="check" s={13}/>Saya Setuju &amp; Konfirmasi Nominal</button>
+
+                {/* Upload bukti transfer — hanya jika lebih bayar */}
+                {rc.isLebih&&(
+                  <div style={{marginBottom:10}}>
+                    <p style={{fontSize:12,fontWeight:700,color:"#374151",marginBottom:6}}>
+                      📎 Upload Bukti Transfer <span style={{color:"#dc2626"}}>*</span>
+                    </p>
+
+                    {/* Preview / drop zone */}
+                    {!proofImg ? (
+                      <label style={{
+                        display:"block",cursor:"pointer",
+                        border:"2px dashed #c4b5fd",borderRadius:"var(--r3)",
+                        padding:"20px 16px",textAlign:"center",
+                        background:"#faf5ff",transition:"background .15s"
+                      }}
+                        onMouseEnter={e=>e.currentTarget.style.background="#f3e8ff"}
+                        onMouseLeave={e=>e.currentTarget.style.background="#faf5ff"}
+                      >
+                        <input type="file" accept="image/*" style={{display:"none"}} onChange={handleProofFile}/>
+                        <div style={{fontSize:28,marginBottom:6}}>📷</div>
+                        <p style={{fontSize:12,fontWeight:700,color:"#7c3aed",marginBottom:2}}>Tap untuk pilih foto</p>
+                        <p style={{fontSize:11,color:"#9ca3af"}}>JPG / PNG · maks. 2MB</p>
+                      </label>
+                    ) : (
+                      <div style={{position:"relative",borderRadius:"var(--r3)",overflow:"hidden",border:"2px solid #a78bfa"}}>
+                        <img src={proofImg} alt="bukti transfer" style={{width:"100%",maxHeight:220,objectFit:"cover",display:"block"}}/>
+                        <div style={{position:"absolute",top:0,right:0,display:"flex",gap:4,padding:6}}>
+                          <label style={{
+                            cursor:"pointer",padding:"4px 8px",fontSize:11,fontWeight:700,
+                            background:"rgba(0,0,0,0.55)",color:"white",borderRadius:5
+                          }}>
+                            <input type="file" accept="image/*" style={{display:"none"}} onChange={handleProofFile}/>
+                            Ganti
+                          </label>
+                          <button onClick={()=>{setProofImg("");setUploadErr("");}} style={{
+                            padding:"4px 8px",fontSize:11,fontWeight:700,
+                            background:"rgba(220,38,38,0.8)",color:"white",border:"none",borderRadius:5,cursor:"pointer"
+                          }}>Hapus</button>
+                        </div>
+                        <div style={{padding:"6px 10px",background:"#f0fdf4",display:"flex",alignItems:"center",gap:6}}>
+                          <span style={{fontSize:11,color:"#059669",fontWeight:700}}>✓ Foto bukti transfer terpilih</span>
+                        </div>
+                      </div>
+                    )}
+                    {uploadErr&&<p style={{fontSize:11,color:"#dc2626",marginTop:5,fontWeight:600}}>{uploadErr}</p>}
+                  </div>
+                )}
+
+                {/* Tombol konfirmasi */}
+                <button className="btn bg" onClick={confirmOer} disabled={uploading} style={{
+                  width:"100%",
+                  background: rc.isLebih&&!proofImg ? "#9ca3af" : undefined,
+                  cursor: rc.isLebih&&!proofImg ? "not-allowed" : "pointer"
+                }}>
+                  {uploading ? <span className="sp2"/> : <Ic n="check" s={13}/>}
+                  {uploading ? "Menyimpan..." :
+                   rc.isLebih ? "Saya Sudah Transfer & Konfirmasi" :
+                   "Saya Setuju & Konfirmasi Nominal"}
+                </button>
+                {rc.isLebih&&!proofImg&&(
+                  <p style={{fontSize:11,color:"#9ca3af",textAlign:"center",marginTop:5}}>Upload bukti transfer untuk melanjutkan</p>
+                )}
               </div>
             )}
+
             {/* Employee: sudah konfirmasi */}
             {isOwner && trx.status==="employee_confirmed" && (
-              <div style={{marginTop:10,padding:"9px 12px",background:"#f0fdf4",borderRadius:"var(--r3)",border:"1px solid #6ee7b7"}}>
-                <p style={{fontSize:12,fontWeight:800,color:"#065f46"}}>✓ Kamu sudah menyetujui nominal ini — menunggu Finance menyelesaikan</p>
+              <div style={{marginTop:10,borderRadius:"var(--r3)",overflow:"hidden",border:"1px solid #a7f3d0"}}>
+                <div style={{padding:"10px 12px",background:"#f0fdf4"}}>
+                  <p style={{fontSize:12,fontWeight:800,color:"#065f46"}}>✓ Kamu sudah mengkonfirmasi — menunggu Finance menyelesaikan</p>
+                </div>
+                {/* Tampilkan bukti transfer jika ada */}
+                {trx.transferProof&&(
+                  <div>
+                    <div style={{padding:"6px 12px",background:"#ecfdf5",borderTop:"1px solid #a7f3d0"}}>
+                      <p style={{fontSize:11,fontWeight:700,color:"#059669",marginBottom:4}}>📎 Bukti Transfer yang Kamu Upload:</p>
+                    </div>
+                    <img src={trx.transferProof} alt="bukti transfer" style={{width:"100%",maxHeight:200,objectFit:"cover",display:"block"}}/>
+                  </div>
+                )}
               </div>
             )}
           </>
@@ -2344,9 +2477,24 @@ function DetailModal({ trx, user, onClose, onAction, onEdit }) {
                     </div>
                   )}
                   {rc.isLebih && (
-                    <div style={{marginBottom:10,padding:"10px 12px",background:"#ede9fe",borderRadius:"var(--r3)",border:"1px solid #c4b5fd"}}>
-                      <p style={{fontSize:11,fontWeight:800,color:"#4c1d95",marginBottom:2}}>📌 Karyawan transfer ke:</p>
-                      <p style={{fontSize:12,fontWeight:700,color:"#4c1d95",fontFamily:"monospace"}}>489-988-9999 a.n. Satya Langgeng Sentosa (BCA)</p>
+                    <div style={{marginBottom:10}}>
+                      <div style={{padding:"10px 12px",background:"#ede9fe",borderRadius:"var(--r3)",border:"1px solid #c4b5fd",marginBottom:8}}>
+                        <p style={{fontSize:11,fontWeight:800,color:"#4c1d95",marginBottom:2}}>📌 Karyawan transfer ke:</p>
+                        <p style={{fontSize:12,fontWeight:700,color:"#4c1d95",fontFamily:"monospace"}}>489-988-9999 a.n. Satya Langgeng Sentosa (BCA)</p>
+                      </div>
+                      {/* Bukti transfer dari karyawan */}
+                      {trx.transferProof ? (
+                        <div style={{borderRadius:"var(--r3)",overflow:"hidden",border:"2px solid #a78bfa"}}>
+                          <div style={{padding:"6px 10px",background:"#f5f3ff",borderBottom:"1px solid #ddd6fe",display:"flex",alignItems:"center",gap:6}}>
+                            <span style={{fontSize:11,fontWeight:700,color:"#7c3aed"}}>📎 Bukti Transfer dari Karyawan:</span>
+                          </div>
+                          <img src={trx.transferProof} alt="bukti transfer" style={{width:"100%",maxHeight:240,objectFit:"contain",display:"block",background:"#fafafa"}}/>
+                        </div>
+                      ) : (
+                        <div style={{padding:"9px 12px",background:"#fff7ed",borderRadius:"var(--r3)",border:"1px solid #fbbf24"}}>
+                          <p style={{fontSize:11,color:"#92400e",fontWeight:700}}>⏳ Bukti transfer belum diupload karyawan</p>
+                        </div>
+                      )}
                     </div>
                   )}
                   <textarea value={note} onChange={e=>setNote(e.target.value)}
@@ -2474,7 +2622,7 @@ export default function App() {
         return {...d, oerAmount, oerCategories, oerNote, status:newStatus};
       }
       if (action==="send_confirm")  return {...d, status:"awaiting_confirm"};
-      if (action==="emp_confirm")   return {...d, status:"employee_confirmed"};
+      if (action==="emp_confirm")   return {...d, status:"employee_confirmed", transferProof: noteOrData?.transferProof||d.transferProof||""};
       if (action==="emp_dispute")   return {...d, status:"disputed", financeNote:noteOrData};
       if (action==="doc_received_lk")  return {...d, status:"doc_received_lk", adminLkName:noteOrData};
       if (action==="doc_sent_jkt")     return {...d, status:"doc_sent_jkt"};
