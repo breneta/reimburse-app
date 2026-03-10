@@ -2429,9 +2429,15 @@ export default function App() {
 
   const reloadData = async () => {
     if (!isReady()) return;
-    const rows = await API.getAll();
+    const [rows, accs] = await Promise.all([API.getAll(), API.getAllAccounts()]);
     if (Array.isArray(rows) && rows.length >= 0) {
-      setData(rows.map(d=>withLateFlagOnly(d)));
+      const accMap = {};
+      (accs||[]).forEach(a=>{ accMap[a.name] = a; });
+      setData(rows.map(d=>{
+        const acc = accMap[d.submitter];
+        const enriched = {...d, bankAccount: acc?.bank_account||"", accountName: acc?.account_name||""};
+        return withLateFlagOnly(enriched);
+      }));
     }
   };
 
@@ -2441,14 +2447,14 @@ export default function App() {
     const onVisible = () => { if (document.visibilityState === "visible") reloadData(); };
     document.addEventListener("visibilitychange", onVisible);
     return () => document.removeEventListener("visibilitychange", onVisible);
-  }, []);
+  }, [user]);
 
-  // Polling setiap 30 detik — semua user dapat data terbaru tanpa harus refresh manual
+  // Polling setiap 15 detik — semua user (termasuk admin shared) dapat data real-time
   useEffect(() => {
-    if (!isReady()) return;
-    const timer = setInterval(reloadData, 30000);
+    if (!isReady() || !user) return;
+    const timer = setInterval(() => reloadData(), 15000);
     return () => clearInterval(timer);
-  }, []);
+  }, [user]);
 
   const handleAction = (id, action, noteOrData, trxType, voucherNo, docNo, sapText) => {
     // Optimistic update dulu — UI langsung berubah tanpa tunggu Sheets
@@ -2586,7 +2592,7 @@ export default function App() {
                 {isReady()?"Supabase ✓":"Tidak terhubung"}
               </span>
               {user.role==="employee"&&page!=="submit"&&<button className="btn bp sm" onClick={()=>nav("submit")}><Ic n="plus" s={13}/>Ajukan</button>}
-              {isReady()&&<button className="btn bo sm" title="Refresh data" onClick={()=>{setLoading(true);API.getAll().then(r=>{if(Array.isArray(r))setData(r.map(d=>withLateFlagOnly(d)));setLoading(false);});}}><Ic n="refresh" s={13}/></button>}
+              {isReady()&&<button className="btn bo sm" title="Refresh data" onClick={reloadData}><Ic n="refresh" s={13}/></button>}
             </div>
           </div>
 
