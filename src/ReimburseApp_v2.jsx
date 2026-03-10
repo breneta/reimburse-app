@@ -803,9 +803,6 @@ function Dashboard({ data, user, nav, onUpdateUser }) {
   const pct     = totalRp?Math.min(100,Math.round(paidRp/totalRp*100)):0;
 
   // Notifikasi khusus karyawan — CA yang harus dikembalikan
-  const harusKembali = user.role==="employee"
-    ? mine.filter(d=>d.type==="cash_advance" && ["awaiting_confirm","kurang_bayar"].includes(d.status) && !d.settled)
-    : [];
   const menungguKonfirmasi = user.role==="employee"
     ? mine.filter(d=>d.type==="cash_advance" && d.status==="awaiting_confirm")
     : [];
