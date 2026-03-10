@@ -147,6 +147,7 @@ const SB = {
       docNo:r.doc_no||"",
       sapText:r.sap_text||"",
       transferTo:r.transfer_to||"",
+      docRoute:r.doc_route||"admin_jkt",
       adminLkName:r.admin_lk_name||"", adminJktName:r.admin_jkt_name||"",
       gaNote:r.ga_note||"", area:r.area||"Jakarta",
     }));
@@ -154,7 +155,7 @@ const SB = {
 
   async create(d) {
     return SB.req("POST","transactions",{
-      id:d.id, type:d.type, submitter:d.submitter, dept:d.dept,
+      id:d.id, type:d.type, submitter:d.submitter, dept:d.dept, area:d.area||"Jakarta",
       purpose:d.purpose, destination:d.destination,
       date_start:d.dateStart, date_end:d.dateEnd,
       amount:d.amount, status:d.status||"pending",
@@ -162,6 +163,7 @@ const SB = {
       notes:d.notes||"", settled:false, settled_date:null,
       approver_name:d.approverName||"", finance_note:"",
       oer_amount:0, oer_categories:[], oer_note:"", oer_date:"", ca_ref:d.caRef||"",
+      doc_route:d.docRoute||"admin_jkt",
     });
   },
 
@@ -781,7 +783,7 @@ function LoginScreen({ onLogin }) {
 // ═══════════════════════════════════════════════════════════════
 // DASHBOARD
 // ═══════════════════════════════════════════════════════════════
-function Dashboard({ data, user, nav }) {
+function Dashboard({ data, user, nav, onUpdateUser }) {
   const mine    = user.role==="employee" ? data.filter(d=>d.submitter===user.name) : data;
   const pending = data.filter(d=>d.status==="pending");
   const approved= data.filter(d=>["approved","doc_complete"].includes(d.status));
@@ -798,9 +800,9 @@ function Dashboard({ data, user, nav }) {
 
   const saveBankInfo = async () => {
     setBankSaving(true);
-    user.bank_account = bankAcc;
-    user.account_name = accName;
     if (isReady()) await API.updateBankInfo(user.username, bankAcc, accName).catch(()=>{});
+    // Update user object di parent agar tidak reset saat re-render
+    if (onUpdateUser) onUpdateUser({ bank_account: bankAcc, account_name: accName });
     setBankSaving(false); setBankSaved(true); setTimeout(()=>setBankSaved(false),2500);
   };
 
@@ -879,7 +881,7 @@ function Dashboard({ data, user, nav }) {
 // SUBMIT FORM
 // ═══════════════════════════════════════════════════════════════
 function SubmitPage({ user, onSubmit, data }) {
-  const [f,setF] = useState({type:"reimburse",purpose:"",destination:"Jakarta",dateStart:"",dateEnd:"",approverName:"",notes:"",caRef:"",items:[{cat:"Perjalanan Dinas",amt:""}]});
+  const [f,setF] = useState({type:"reimburse",purpose:"",destination:"Jakarta",dateStart:"",dateEnd:"",approverName:"",notes:"",caRef:"",docRoute:"admin_jkt",items:[{cat:"Perjalanan Dinas",amt:""}]});
   const [submitState,setSubmitState] = useState("idle"); // idle | saving | verifying | done | error
   const [savedEntry,setSavedEntry]   = useState(null);
   const set=(k,v)=>setF(p=>({...p,[k]:v}));
@@ -889,13 +891,17 @@ function SubmitPage({ user, onSubmit, data }) {
 
   const submit = async () => {
     if (!f.purpose||!f.dateStart||!f.dateEnd||!f.approverName||total===0) { alert("Harap lengkapi semua field wajib (*)"); return; }
+    // Status awal tergantung jalur dokumen yang dipilih karyawan
+    const initStatus = f.docRoute==="admin_lk" ? "pending" : "pending";
     const entry = {
       id:gid(), type:f.type, submitter:user.name, dept:user.dept,
+      area:user.area||"Jakarta",
       purpose:f.purpose, destination:f.destination, dateStart:f.dateStart, dateEnd:f.dateEnd,
-      amount:total, status:"pending", submitted:today(),
+      amount:total, status:initStatus, submitted:today(),
       categories:f.items.map(it=>({cat:it.cat,amt:parseFloat(it.amt)||0})),
       notes:f.notes, settled:false, settledDate:null, approverName:f.approverName,
       financeNote:"", caRef:f.caRef||"", oerAmount:0,
+      docRoute:f.docRoute||"admin_jkt",
     };
     if (!isReady()) { onSubmit(entry); return; }
 
@@ -999,6 +1005,23 @@ function SubmitPage({ user, onSubmit, data }) {
             </div>
           )}
         </div>
+        {/* JALUR DOKUMEN */}
+        <div className="fs mb4">
+          <div className="fst">Jalur Pengiriman Dokumen <span style={{color:"var(--rd)"}}>*</span></div>
+          <div style={{display:"flex",gap:9}}>
+            {[
+              ["admin_jkt","🏢 Langsung ke Admin Jakarta","Karyawan Jakarta atau titip langsung"],
+              ["admin_lk","📦 Lewat Admin Luar Kota","Karyawan luar kota, dokumen dikirim dulu"]
+            ].map(([v,l,s])=>(
+              <label key={v} style={{flex:1,display:"flex",alignItems:"center",gap:9,padding:"11px 13px",borderRadius:"var(--r2)",border:`2px solid ${f.docRoute===v?"var(--tl)":"var(--ln)"}`,background:f.docRoute===v?"var(--tlb)":"var(--w)",cursor:"pointer",margin:0}}>
+                <input type="radio" name="dr" checked={f.docRoute===v} onChange={()=>set("docRoute",v)} style={{width:"auto",accentColor:"var(--tl)"}}/>
+                <div><div style={{fontSize:13,fontWeight:700}}>{l}</div><div style={{fontSize:11,color:"var(--i3)"}}>{s}</div></div>
+              </label>
+            ))}
+          </div>
+          {f.docRoute==="admin_lk" && <div className="al aw mt3"><Ic n="send" s={13} c="#d97706"/><span>Dokumen fisik akan masuk antrian <strong>Admin Luar Kota</strong> terlebih dahulu.</span></div>}
+          {f.docRoute==="admin_jkt" && <div className="al ab mt3"><Ic n="check" s={13} c="#2563eb"/><span>Dokumen fisik langsung ke <strong>Admin Jakarta</strong>.</span></div>}
+        </div>
         {/* DETAIL */}
         <div className="fs mb4">
           <div className="fst">Detail Perjalanan</div>
@@ -1028,7 +1051,7 @@ function SubmitPage({ user, onSubmit, data }) {
         <div className="fs mb4"><div className="fst">Nama Admin <span style={{color:"var(--rd)"}}>*</span></div><input value={f.approverName} onChange={e=>set("approverName",e.target.value)} placeholder="Nama Admin yang menerima dokumen fisik"/></div>
         <div className="fs mb4"><div className="fst">Catatan (Opsional)</div><textarea value={f.notes} onChange={e=>set("notes",e.target.value)} placeholder="Catatan untuk Finance..." rows={2}/></div>
         <div style={{display:"flex",justifyContent:"flex-end",gap:9}}>
-          <button className="btn bo" onClick={()=>setF({type:"reimburse",purpose:"",destination:"Jakarta",dateStart:"",dateEnd:"",approverName:"",notes:"",items:[{cat:"Perjalanan Dinas",amt:""}]})}>Reset</button>
+          <button className="btn bo" onClick={()=>setF({type:"reimburse",purpose:"",destination:"Jakarta",dateStart:"",dateEnd:"",approverName:"",notes:"",caRef:"",docRoute:"admin_jkt",items:[{cat:"Perjalanan Dinas",amt:""}]})}>Reset</button>
           <button className="btn bp" onClick={submit} disabled={submitState!=="idle"}><Ic n="send" s={13}/>Submit Pengajuan</button>
         </div>
       </div>
@@ -1085,7 +1108,7 @@ function ListPage({ data, user, onSel }) {
 function AdminLKQueue({ data, onAction, onSel, user }) {
   const [sel, setSel] = useState({});
   const [adminName, setAdminName] = useState("");
-  const queue = data.filter(d => d.status === "pending");
+  const queue = data.filter(d => d.status === "pending" && d.docRoute === "admin_lk");
   const selIds = Object.keys(sel).filter(k => sel[k]);
 
   const doReceive = (ids) => {
@@ -1194,7 +1217,7 @@ function AdminJKTQueue({ data, onAction, onSel, user }) {
   const [sel, setSel] = useState({});
   const [adminName, setAdminName] = useState("");
   const queue = data.filter(d => d.status === "doc_sent_jkt");
-  const jktPending = data.filter(d => d.status === "pending" && (d.area === "Jakarta" || !d.area));
+  const jktPending = data.filter(d => d.status === "pending" && (d.docRoute==="admin_jkt" || (!d.docRoute && (d.area==="Jakarta"||!d.area))));
 
   // Semua yang bisa di-select: dari LK + karyawan Jakarta langsung
   const selLKIds  = Object.keys(sel).filter(k => sel[k] && queue.find(d=>d.id===k));
@@ -2376,13 +2399,28 @@ export default function App() {
     setUser(u);
     if (isReady()) {
       setLoading(true);
-      const res = await API.getAll();
-      if (Array.isArray(res)) setData(res.map(d=>isOverdue(d)?{...d,status:"overdue"}:d));
+      const [res, accs] = await Promise.all([API.getAll(), API.getAllAccounts()]);
+      if (Array.isArray(res)) {
+        const accMap = {};
+        (accs||[]).forEach(a=>{ accMap[a.name] = a; });
+        setData(res.map(d=>{
+          const acc = accMap[d.submitter];
+          return isOverdue({...d,
+            bankAccount: d.bankAccount || acc?.bank_account || "",
+            accountName: d.accountName || acc?.account_name || "",
+          }) ? {...d, bankAccount: acc?.bank_account||"", accountName: acc?.account_name||"", status:"overdue"}
+             : {...d, bankAccount: acc?.bank_account||"", accountName: acc?.account_name||""};
+        }));
+      }
       setLoading(false);
     }
   };
 
   const handleLogout = () => { setUser(null); setPage("dashboard"); setData(DEMO); setSideOpen(false); };
+
+  const handleUpdateUser = (patch) => {
+    setUser(prev => ({...prev, ...patch}));
+  };
 
   const showToast = (msg, type="ok") => { setToast({msg,type}); setTimeout(()=>setToast(null),3000); };
 
@@ -2557,7 +2595,7 @@ export default function App() {
               </div>
             ) : (
               <>
-                {page==="dashboard" && <Dashboard data={data} user={user} nav={nav}/>}
+                {page==="dashboard" && <Dashboard data={data} user={user} nav={nav} onUpdateUser={handleUpdateUser}/>}
                 {page==="submit"    && <SubmitPage user={user} onSubmit={handleSubmit} data={data}/>}
                 {page==="list"      && <ListPage data={data} user={user} onSel={id=>setSelId(id)}/>}
                 {page==="admin_lk_queue"  && <AdminLKQueue data={data} onAction={handleAction} onSel={id=>setSelId(id)} user={user}/>}
