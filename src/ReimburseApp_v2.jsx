@@ -619,14 +619,16 @@ function LoginScreen({ onLogin }) {
       const dept = res.dept || res.acc?.dept || "-";
       const area = res.area || res.acc?.area || "Jakarta";
       const av2  = name.split(" ").map(w=>w[0]).join("").toUpperCase().slice(0,2);
-      onLogin({ name, dept, area, role:"employee", avatar:av2 });
+      onLogin({ name, dept, area, role:"employee", avatar:av2, username:ukey,
+                bank_account: res.bank_account||"", account_name: res.account_name||"" });
     } else {
       const accounts = lsGet2();
       const acc = accounts[ukey];
       setBusy2(false);
       if (!acc)             return setErr("Username tidak ditemukan");
       if (acc.password !== pass) return setErr("Password salah!");
-      onLogin({ name:acc.name, dept:acc.dept, role:"employee", avatar:acc.avatar });
+      onLogin({ name:acc.name, dept:acc.dept, role:"employee", avatar:acc.avatar, username:ukey,
+                bank_account: acc.bank_account||"", account_name: acc.account_name||"" });
     }
   };
 
@@ -800,8 +802,8 @@ function Dashboard({ data, user, nav, onUpdateUser }) {
 
   const saveBankInfo = async () => {
     setBankSaving(true);
-    if (isReady()) await API.updateBankInfo(user.username, bankAcc, accName).catch(()=>{});
-    // Update user object di parent agar tidak reset saat re-render
+    const ukey = user.username || user.name;
+    if (isReady()) await API.updateBankInfo(ukey, bankAcc, accName).catch(e=>console.error("bank save err:",e));
     if (onUpdateUser) onUpdateUser({ bank_account: bankAcc, account_name: accName });
     setBankSaving(false); setBankSaved(true); setTimeout(()=>setBankSaved(false),2500);
   };
@@ -982,6 +984,23 @@ function SubmitPage({ user, onSubmit, data }) {
     <div><div className="card">
       <div className="ch"><div><h3>Form Pengajuan</h3><p style={{fontSize:11,color:"var(--i3)",marginTop:3}}>Oleh: <strong>{user.name}</strong> · {user.dept}</p></div></div>
       <div className="cb">
+        {/* JALUR DOKUMEN — pilih dulu sebelum isi yang lain */}
+        <div className="fs mb4" style={{border:"2px solid var(--tl)",background:"var(--tlb)"}}>
+          <div className="fst" style={{color:"var(--tl)"}}>📬 Jalur Pengiriman Dokumen <span style={{color:"var(--rd)"}}>*</span></div>
+          <div style={{display:"flex",gap:9,marginTop:4}}>
+            {[
+              ["admin_jkt","🏢 Langsung ke Admin Jakarta","Karyawan Jakarta atau titip langsung"],
+              ["admin_lk","📦 Lewat Admin Luar Kota","Karyawan luar kota, dokumen dikirim dulu"]
+            ].map(([v,l,s])=>(
+              <label key={v} style={{flex:1,display:"flex",alignItems:"center",gap:9,padding:"12px 14px",borderRadius:"var(--r2)",border:`2px solid ${f.docRoute===v?"var(--tl)":"var(--ln)"}`,background:f.docRoute===v?"white":"rgba(255,255,255,0.6)",cursor:"pointer",margin:0,boxShadow:f.docRoute===v?"0 2px 8px rgba(37,99,235,0.15)":"none",transition:"all .15s"}}>
+                <input type="radio" name="dr" checked={f.docRoute===v} onChange={()=>set("docRoute",v)} style={{width:"auto",accentColor:"var(--tl)",flexShrink:0}}/>
+                <div><div style={{fontSize:13,fontWeight:700,color:f.docRoute===v?"var(--tl)":"var(--ink)"}}>{l}</div><div style={{fontSize:11,color:"var(--i3)"}}>{s}</div></div>
+              </label>
+            ))}
+          </div>
+          {f.docRoute==="admin_lk" && <div className="al aw mt3"><Ic n="send" s={13} c="#d97706"/><span>Dokumen fisik masuk antrian <strong>Admin Luar Kota</strong> dulu → dikirim ke Jakarta → GA → Finance.</span></div>}
+          {f.docRoute==="admin_jkt" && <div className="al ab mt3"><Ic n="check" s={13} c="#2563eb"/><span>Dokumen fisik langsung ke <strong>Admin Jakarta</strong> → GA → Finance.</span></div>}
+        </div>
         {/* JENIS */}
         <div className="fs mb4">
           <div className="fst">Jenis Pengajuan</div>
@@ -1004,23 +1023,6 @@ function SubmitPage({ user, onSubmit, data }) {
               {f.caRef && <p style={{fontSize:11,color:"#1d4ed8",marginTop:5}}>✓ OER ini akan clearing CA {f.caRef} secara otomatis</p>}
             </div>
           )}
-        </div>
-        {/* JALUR DOKUMEN */}
-        <div className="fs mb4">
-          <div className="fst">Jalur Pengiriman Dokumen <span style={{color:"var(--rd)"}}>*</span></div>
-          <div style={{display:"flex",gap:9}}>
-            {[
-              ["admin_jkt","🏢 Langsung ke Admin Jakarta","Karyawan Jakarta atau titip langsung"],
-              ["admin_lk","📦 Lewat Admin Luar Kota","Karyawan luar kota, dokumen dikirim dulu"]
-            ].map(([v,l,s])=>(
-              <label key={v} style={{flex:1,display:"flex",alignItems:"center",gap:9,padding:"11px 13px",borderRadius:"var(--r2)",border:`2px solid ${f.docRoute===v?"var(--tl)":"var(--ln)"}`,background:f.docRoute===v?"var(--tlb)":"var(--w)",cursor:"pointer",margin:0}}>
-                <input type="radio" name="dr" checked={f.docRoute===v} onChange={()=>set("docRoute",v)} style={{width:"auto",accentColor:"var(--tl)"}}/>
-                <div><div style={{fontSize:13,fontWeight:700}}>{l}</div><div style={{fontSize:11,color:"var(--i3)"}}>{s}</div></div>
-              </label>
-            ))}
-          </div>
-          {f.docRoute==="admin_lk" && <div className="al aw mt3"><Ic n="send" s={13} c="#d97706"/><span>Dokumen fisik akan masuk antrian <strong>Admin Luar Kota</strong> terlebih dahulu.</span></div>}
-          {f.docRoute==="admin_jkt" && <div className="al ab mt3"><Ic n="check" s={13} c="#2563eb"/><span>Dokumen fisik langsung ke <strong>Admin Jakarta</strong>.</span></div>}
         </div>
         {/* DETAIL */}
         <div className="fs mb4">
