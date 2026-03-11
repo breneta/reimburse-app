@@ -3182,7 +3182,7 @@ export default function App() {
                               <td style={{fontSize:12}}>{fd(d.dateEnd)}</td>
                               <td>{late>0?<span style={{fontWeight:800,color:"var(--rd)",fontSize:12}}>+{late} hari</span>:<span style={{color:"var(--am)",fontWeight:700,fontSize:12}}>Dalam batas</span>}</td>
                               <td className="bold">{rp(d.amount)}</td>
-                              <td><SBadge s={d.status} trx={d} isOwner={isOwner}/><LateBadge d={d}/></td>
+                              <td><SBadge s={d.status}/><LateBadge d={d}/></td>
                             </tr>
                           );
                         })}</tbody>
