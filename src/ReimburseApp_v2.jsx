@@ -24,7 +24,7 @@ const isReady = () => CONFIG.SUPABASE_URL && CONFIG.SUPABASE_KEY;
 // ═══════════════════════════════════════════════════════════════
 const DEPTS = ["Sales","Commercial","HRD","Marketing","GA","IT","Finance","Lainnya"];
 const AREAS = ["Jakarta","Surabaya","Semarang","Medan","Yogyakarta","Denpasar","Bandung","Palembang"];
-const CATS  = ["Perjalanan Dinas","Akomodasi / Hotel","Makan & Entertainment","Transportasi","Uang Saku","Komunikasi","Lain-lain"];
+const CATS  = ["Perjalanan Dinas","Akomodasi / Hotel","Makan","Entertainment","Transportasi","Uang Saku","Komunikasi","Lain-lain"];
 const STATUS = {
   pending:           { label:"Menunggu Approval",      color:"#92400e", bg:"#fffbeb", dot:"#f59e0b" },
   doc_received_lk:   { label:"Diterima Admin LK",      color:"#1e40af", bg:"#eff6ff", dot:"#3b82f6" },
@@ -1004,10 +1004,10 @@ function SubmitPage({ user, onSubmit, data }) {
 
   const submit = async () => {
     if (!f.purpose||!f.dateStart||!f.dateEnd||!f.approverName||total===0) { alert("Harap lengkapi semua field wajib (*)"); return; }
-    // Status awal tergantung jalur dokumen yang dipilih karyawan
-    const initStatus = f.docRoute==="admin_lk" ? "pending" : "pending";
+    // Status awal selalu pending — jalur ditentukan oleh docRoute field
+    const initStatus = "pending";
     const entry = {
-      id:gid(), type:f.type, submitter:user.name, dept:user.dept,
+      id:gid(), type:f.type, submitter:user.name, submitterUsername:user.username||"", dept:user.dept,
       area:user.area||"Jakarta",
       purpose:f.purpose, destination:f.destination, dateStart:f.dateStart, dateEnd:f.dateEnd,
       amount:total, status:initStatus, submitted:today(),
@@ -1501,7 +1501,8 @@ function GAQueue({ data, onAction, onSel, user }) {
   const [sel, setSel] = useState({});
   const [gaNote, setGaNote] = useState("");
   const [editOerId, setEditOerId] = useState(null);
-  const [oerVal, setOerVal] = useState("");
+  const [oerVals, setOerVals] = useState({});  // keyed by trx id
+  const setOerVal = (id, v) => setOerVals(p=>({...p,[id]:v}));
   // queue reguler hanya doc_received_jkt (bukan OER — OER punya tombol Approve sendiri)
   const queue    = data.filter(d => d.status === "doc_received_jkt");
   const oerQueue = data.filter(d => d.status === "oer_doc_received");
@@ -1509,11 +1510,11 @@ function GAQueue({ data, onAction, onSel, user }) {
 
   const doComplete = (ids) => {
     ids.forEach(id => {
-      const oerAmt = editOerId === id && oerVal ? parseFloat(oerVal) : null;
+      const oerAmt = editOerId === id && oerVals[id] ? parseFloat(oerVals[id]) : null;
       onAction(id, "doc_complete", gaNote||"Dokumen lengkap");
       if (isReady()) API.docComplete(id, oerAmt, gaNote||"Dokumen lengkap").catch(()=>{});
     });
-    setSel({}); setGaNote(""); setEditOerId(null); setOerVal("");
+    setSel({}); setGaNote(""); setEditOerId(null); setOerVals({});
   };
 
   const doOerComplete = (id, d) => {
@@ -1558,13 +1559,13 @@ function GAQueue({ data, onAction, onSel, user }) {
               <td onClick={e=>e.stopPropagation()}>
                 {editOerId === d.id ? (
                   <div style={{display:"flex",gap:5,alignItems:"center"}}>
-                    <input type="number" value={oerVal} onChange={e=>setOerVal(e.target.value)}
+                    <input type="number" value={oerVals[d.id]||""} onChange={e=>setOerVal(d.id,e.target.value)}
                       placeholder="Nominal" style={{width:110,padding:"4px 7px",fontSize:12}}/>
                     <button className="btn bg xs" onClick={()=>setEditOerId(null)}>✓</button>
                   </div>
                 ) : (
                   <div style={{display:"flex",gap:5,alignItems:"center"}}>
-                    <span style={{fontSize:12,fontWeight:700}}>{oerVal && editOerId!==d.id ? rp(parseFloat(oerVal)) : (d.oerAmount ? rp(d.oerAmount) : <span style={{color:"var(--i4)"}}>—</span>)}</span>
+                    <span style={{fontSize:12,fontWeight:700}}>{oerVals[d.id] && editOerId!==d.id ? rp(parseFloat(oerVals[d.id])) : (d.oerAmount ? rp(d.oerAmount) : <span style={{color:"var(--i4)"}}>—</span>)}</span>
                     <button className="btn bo xs" onClick={()=>setEditOerId(d.id)} style={{fontSize:10}}>✏️</button>
                   </div>
                 )}
@@ -2707,7 +2708,7 @@ function DetailModal({ trx, user, onClose, onAction, onEdit }) {
                 </div>
               )}
               {/* Employee: submit OER for this CA */}
-              {isOwner && trx.type==="cash_advance" && ["paid","awaiting_oer"].includes(trx.status) && !trx.oerAmount && (
+              {isOwner && trx.type==="cash_advance" && ["paid","awaiting_oer"].includes(trx.status) && !trx.oerAmount && !trx.oerDate && (
                 <div style={{marginTop:16,padding:14,background:"#fef9c3",borderRadius:"var(--r2)",border:"2px solid #ca8a04"}}>
                   <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
                     <p style={{fontSize:13,fontWeight:800,color:"#78350f"}}>📋 Submit OER untuk CA ini</p>
@@ -3037,8 +3038,15 @@ export default function App() {
     // Kemudian reload dari Supabase untuk sync semua user
     if (isReady()) {
       await new Promise(r=>setTimeout(r,500));
-      const rows = await API.getAll();
-      if (Array.isArray(rows)) setData(rows.map(d=>withLateFlagOnly(d)));
+      const [rows, accs] = await Promise.all([API.getAll(), API.getAllAccounts()]);
+      if (Array.isArray(rows)) {
+        const accMap = {};
+        (accs||[]).forEach(a=>{ accMap[a.name]=a; if(a.username) accMap[a.username]=a; });
+        setData(rows.map(d=>{
+          const acc = accMap[d.submitterUsername] || accMap[d.submitter];
+          return withLateFlagOnly({...d, bankAccount:acc?.bank_account||"", accountName:acc?.account_name||""});
+        }));
+      }
     }
   };
   const nav = (p, id) => { if (id) setSelId(id); setPage(p); setSideOpen(false); };
