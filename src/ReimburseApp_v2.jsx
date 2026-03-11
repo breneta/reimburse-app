@@ -33,7 +33,8 @@ const STATUS = {
   doc_complete:      { label:"Dokumen Lengkap ✓",      color:"#065f46", bg:"#ecfdf5", dot:"#10b981" },
   approved:          { label:"Disetujui",               color:"#1e40af", bg:"#eff6ff", dot:"#3b82f6" },
   processing:        { label:"Diproses Finance",       color:"#5b21b6", bg:"#f5f3ff", dot:"#8b5cf6" },
-  paid:              { label:"Lunas",                   color:"#065f46", bg:"#ecfdf5", dot:"#10b981" },
+  paid:              { label:"Lunas ✓",                  color:"#065f46", bg:"#ecfdf5", dot:"#10b981" },
+  paid_queued:       { label:"Dalam Antrian Transfer 🏦",  color:"#0369a1", bg:"#e0f2fe", dot:"#0ea5e9" },
   awaiting_oer:      { label:"Menunggu OER",            color:"#854d0e", bg:"#fef9c3", dot:"#ca8a04" },
   oer_doc_pending:   { label:"OER — Menunggu Dok Admin", color:"#0e7490", bg:"#ecfeff", dot:"#06b6d4" },
   oer_doc_received:  { label:"OER — Diterima Admin JKT", color:"#065f46", bg:"#ecfdf5", dot:"#10b981" },
@@ -138,7 +139,7 @@ const SB = {
     const rows = await SB.req("GET","transactions",null,{select:"*",order:"submitted.desc"});
     if (!rows) return null;
     return rows.map(r=>({
-      id:r.id, type:r.type, submitter:r.submitter, submitterUsername:r.submitter_username||"", dept:r.dept,
+      id:r.id, type:r.type, submitter:r.submitter, submitterUsername:r.submitter_username||"", dept:r.dept, transferDate:r.transfer_date||"",
       purpose:r.purpose, destination:r.destination,
       dateStart:r.date_start, dateEnd:r.date_end,
       amount:r.amount, status:r.status, submitted:r.submitted,
@@ -167,7 +168,7 @@ const SB = {
       amount:d.amount, status:d.status||"pending",
       submitted:d.submitted, categories:d.categories||[],
       notes:d.notes||"", settled:false, settled_date:null,
-      approver_name:d.approverName||"", finance_note:"",
+      approver_name:d.approverName||"", finance_note:"", transfer_date:d.transferDate||"",
       oer_amount:0, oer_categories:[], oer_note:"", oer_date:"", ca_ref:d.caRef||"",
       doc_route:d.docRoute||"admin_jkt",
     });
@@ -544,7 +545,16 @@ const IP = {
 const Ic = ({ n, s=16, c="currentColor" }) => (
   <svg width={s} height={s} fill="none" stroke={c} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d={IP[n]||""}/></svg>
 );
-const SBadge = ({ s }) => { const c=STATUS[s]||{label:s,color:"#475569",bg:"#f1f5f9"}; return <span className="badge" style={{color:c.color,background:c.bg}}>{c.label}</span>; };
+const SBadge = ({ s, trx, isOwner }) => {
+  let displayStatus = s;
+  if (isOwner && trx && (s==="paid"||s==="awaiting_oer") && trx.transferDate) {
+    const todayD = new Date(); todayD.setHours(0,0,0,0);
+    const estD   = new Date(trx.transferDate); estD.setHours(0,0,0,0);
+    if (estD >= todayD) displayStatus = "paid_queued";
+  }
+  const c=STATUS[displayStatus]||{label:displayStatus,color:"#475569",bg:"#f1f5f9"};
+  return <span className="badge" style={{color:c.color,background:c.bg}}>{c.label}</span>;
+};
 const LateBadge = ({ d }) => d.isLate ? <span className="badge" style={{color:"#9f1239",background:"#fff1f2",marginLeft:4}}>⚠ Terlambat</span> : null;
 const TTag = ({ t }) => t==="cash_advance"?<span className="tag tca">Cash Advance</span>:<span className="tag tre">Reimburse</span>;
 
@@ -981,7 +991,7 @@ function Dashboard({ data, user, nav, onUpdateUser }) {
               <td><TTag t={d.type}/></td>
               <td><div className="trunc" style={{maxWidth:180}}>{d.purpose}</div></td>
               <td className="bold">{rp(d.amount)}</td>
-              <td><SBadge s={d.status}/><LateBadge d={d}/></td>
+              <td><SBadge s={d.status} trx={d} isOwner={user.role==="employee"}/><LateBadge d={d}/></td>
             </tr>
           ))}</tbody>
         </table>{mine.length===0&&<div className="empty"><p>Belum ada pengajuan</p></div>}</div>
@@ -1202,7 +1212,7 @@ function ListPage({ data, user, onSel }) {
               <td style={{fontSize:12,color:"var(--i3)"}}>{d.destination}</td>
               <td style={{fontSize:11,color:"var(--i3)"}}>{fd(d.dateStart)}<br/>{fd(d.dateEnd)}</td>
               <td className="bold">{rp(d.amount)}</td>
-              <td><SBadge s={d.status}/><LateBadge d={d}/></td>
+              <td><SBadge s={d.status} trx={d} isOwner={user.role==="employee"}/><LateBadge d={d}/></td>
             </tr>
           ))}</tbody>
         </table>{rows.length===0&&<div className="empty"><Ic n="list" s={36}/><p style={{marginTop:10}}>Tidak ada data</p></div>}
@@ -2456,16 +2466,19 @@ function DetailModal({ trx, user, onClose, onAction, onEdit }) {
       const sm = {approve:"approved",reject:"rejected",process:"processing",doc_complete:"doc_complete"};
       supabaseStatus = sm[action] || action;
     }
-    onAction(trx.id, action, n, trx.type, voucher||"", dn||"", st||"");
-    if (isReady()) API.update(trx.id, supabaseStatus, n, voucher||"", dn||"", st||"")
-      .catch(e=>console.error("sync error:",e))
-      .finally(()=>setBusy(false));
-    else setBusy(false);
+    onAction(trx.id, action, n, trx.type, voucher||"", dn||"", st||"", transferDate||"");
+    if (isReady()) {
+      const p = {status:supabaseStatus, finance_note:n||"", bank_voucher_no:voucher||"", doc_no:dn||"", sap_text:st||""};
+      if (action==="pay" && transferDate) p.transfer_date = transferDate;
+      SB.update(trx.id, p).catch(e=>console.error("sync error:",e)).finally(()=>setBusy(false));
+    } else setBusy(false);
   };
+
   const [norek, setNorek]                 = useState("");
   const [settleVoucher, setSettleVoucher] = useState("");
   const [settleDocNo, setSettleDocNo]     = useState("");
   const [settleDocDate, setSettleDocDate] = useState("");
+  const [transferDate, setTransferDate]   = useState(trx.transferDate||"");
   const [settleSapText, setSettleSapText] = useState("");
 
   const settle = () => {
@@ -2554,10 +2567,31 @@ function DetailModal({ trx, user, onClose, onAction, onEdit }) {
           ) : (
             <>
               <div style={{display:"flex",flexWrap:"wrap",gap:7,alignItems:"center",padding:"9px 13px",background:"var(--ln2)",borderRadius:"var(--r2)",marginBottom:16}}>
-                <TTag t={trx.type}/><SBadge s={trx.status}/><LateBadge d={trx}/><span style={{marginLeft:"auto",fontSize:11,color:"var(--i3)"}}>Diajukan {fd(trx.submitted)}</span>
+                <TTag t={trx.type}/><SBadge s={trx.status} trx={trx} isOwner={isOwner}/><LateBadge d={trx}/><span style={{marginLeft:"auto",fontSize:11,color:"var(--i3)"}}>Diajukan {fd(trx.submitted)}</span>
               </div>
               {trx.status==="rejected"&&trx.financeNote&&<div className="al ae mb4"><Ic n="x" s={13} c="#dc2626"/><span><strong>Alasan:</strong> {trx.financeNote}</span></div>}
               {trx.financeNote&&trx.status!=="rejected"&&<div className="al ab mb4"><Ic n="bell" s={13} c="#2563eb"/><span>{trx.financeNote}</span></div>}
+              {/* Karyawan: notif antrian transfer */}
+              {isOwner && (trx.status==="paid"||trx.status==="awaiting_oer") && trx.transferDate && (()=>{
+                const todayD = new Date(); todayD.setHours(0,0,0,0);
+                const estD   = new Date(trx.transferDate); estD.setHours(0,0,0,0);
+                const diffDays = Math.round((estD-todayD)/(1000*60*60*24));
+                const isQueued = estD >= todayD;
+                if (!isQueued) return null;
+                return (
+                  <div style={{marginBottom:12,padding:"12px 14px",background:"#e0f2fe",border:"1px solid #7dd3fc",borderRadius:"var(--r3)",display:"flex",gap:10,alignItems:"flex-start"}}>
+                    <span style={{fontSize:18,lineHeight:1}}>🏦</span>
+                    <div>
+                      <p style={{fontSize:13,fontWeight:800,color:"#0c4a6e",marginBottom:2}}>Dalam Antrian Transfer</p>
+                      <p style={{fontSize:12,color:"#0369a1"}}>
+                        Estimasi masuk rekening: <strong>{new Date(trx.transferDate).toLocaleDateString("id-ID",{weekday:"long",day:"numeric",month:"long",year:"numeric"})}</strong>
+                        {diffDays===0?" (hari ini)":diffDays===1?` (besok)`:diffDays>0?` (${diffDays} hari lagi)`:""}
+                      </p>
+                      <p style={{fontSize:11,color:"#0284c7",marginTop:3}}>Transfer sedang diproses melalui KlikBCA. Hubungi Finance jika tidak masuk dalam 2 hari kerja.</p>
+                    </div>
+                  </div>
+                );
+              })()}
 
               <div className="g2 mb4">
                 <div>
@@ -2701,6 +2735,10 @@ function DetailModal({ trx, user, onClose, onAction, onEdit }) {
                   <div className="fg mb3">
                     <label className="fl" style={{fontSize:12}}>Text <span style={{color:"var(--rd)"}}>*</span> <span style={{color:"var(--i3)",fontWeight:400}}>(deskripsi dari SAP)</span></label>
                     <input value={sapText} onChange={e=>setSapText(e.target.value)} placeholder="Deskripsi transaksi dari SAP" style={{marginBottom:0}}/>
+                  </div>
+                  <div className="fg mb3">
+                    <label className="fl" style={{fontSize:12}}>Estimasi Tanggal Masuk Rekening <span style={{color:"var(--i3)",fontWeight:400}}>(opsional — ditampilkan ke karyawan)</span></label>
+                    <input type="date" value={transferDate} onChange={e=>setTransferDate(e.target.value)} style={{marginBottom:0}}/>
                   </div>
                   <textarea value={note} onChange={e=>setNote(e.target.value)} placeholder="Catatan tambahan (opsional)..." rows={2} style={{marginBottom:9}}/>
                   <button className="btn bg" onClick={()=>act("pay",note,voucherNo,docNo,sapText)} disabled={busy||!voucherNo.trim()||!docNo.trim()}>{busy?<span className="sp2"/>:<Ic n="check" s={13}/>}Tandai Sudah Dibayar</button>
@@ -2857,7 +2895,7 @@ function DetailModal({ trx, user, onClose, onAction, onEdit }) {
                 </div>
               )}
 
-              {isFin&&trx.status==="paid"&&trx.type==="cash_advance"&&!trx.oerAmount&&(
+              {isFin&&trx.status==="paid"&&trx.type==="cash_advance"&&!trx.oerAmount&&!trx.oerDate&&(
                 <div style={{marginTop:16,padding:14,background:"var(--amb)",borderRadius:"var(--r2)",border:"1px solid var(--ambd)"}}>
                   <p style={{fontSize:13,fontWeight:700,marginBottom:4,color:"#78350f"}}>⏳ Menunggu OER dari {trx.submitter}</p>
                   <p style={{fontSize:11,color:"#92400e"}}>Karyawan perlu submit OER untuk bisa dilakukan rekonsiliasi dan settlement.</p>
@@ -2956,7 +2994,7 @@ export default function App() {
     return () => clearInterval(timer);
   }, [user]);
 
-  const handleAction = (id, action, noteOrData, trxType, voucherNo, docNo, sapText) => {
+  const handleAction = (id, action, noteOrData, trxType, voucherNo, docNo, sapText, transferDate) => {
     // Optimistic update dulu — UI langsung berubah tanpa tunggu Sheets
     setData(prev=>prev.map(d=>{
       if (d.id!==id) return d;
@@ -2990,14 +3028,14 @@ export default function App() {
         approve:  {status:"approved"},
         reject:   {status:"rejected",   financeNote:noteOrData},
         process:  {status:"processing", financeNote:noteOrData, bankVoucherNo:voucherNo||""},
-        pay:      {status: (trxType||d.type)==="cash_advance" ? "awaiting_oer" : "paid", settledDate:today(), financeNote:noteOrData, bankVoucherNo:voucherNo||d.bankVoucherNo||"", docNo:docNo||d.docNo||"", sapText:sapText||d.sapText||""},
+        pay:      {status: (trxType||d.type)==="cash_advance" ? "awaiting_oer" : "paid", settledDate:today(), financeNote:noteOrData, bankVoucherNo:voucherNo||d.bankVoucherNo||"", docNo:docNo||d.docNo||"", sapText:sapText||d.sapText||"", transferDate:transferDate||d.transferDate||""},
         settle:   {settled:true, status:"settled", settledDate:today(), financeNote:noteOrData, bankVoucherNo:voucherNo||d.bankVoucherNo||"", docNo:docNo||d.docNo||"", sapText:sapText||d.sapText||""},
       };
       return {...d, ...m[action]};
     }));
     const msgs = {
       approve:"✓ Pengajuan disetujui", reject:"Pengajuan ditolak",
-      process:"✓ Mulai diproses", pay:"✓ Pembayaran dikonfirmasi — Lunas",
+      process:"✓ Mulai diproses", pay:"✓ Pembayaran dikonfirmasi",
       settle:"✓ Settlement dikonfirmasi — CA lunas",
       oer_submitted:"✓ OER berhasil disubmit",
       edit_oer:"✓ OER dikoreksi", send_confirm:"✓ Nominal dikirim ke karyawan untuk konfirmasi",
@@ -3144,7 +3182,7 @@ export default function App() {
                               <td style={{fontSize:12}}>{fd(d.dateEnd)}</td>
                               <td>{late>0?<span style={{fontWeight:800,color:"var(--rd)",fontSize:12}}>+{late} hari</span>:<span style={{color:"var(--am)",fontWeight:700,fontSize:12}}>Dalam batas</span>}</td>
                               <td className="bold">{rp(d.amount)}</td>
-                              <td><SBadge s={d.status}/><LateBadge d={d}/></td>
+                              <td><SBadge s={d.status} trx={d} isOwner={isOwner}/><LateBadge d={d}/></td>
                             </tr>
                           );
                         })}</tbody>
