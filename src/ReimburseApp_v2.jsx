@@ -67,7 +67,7 @@ const gid = () => {
 };
 const rp    = n  => "Rp " + new Intl.NumberFormat("id-ID").format(n||0);
 const fd    = d  => d ? new Date(d).toLocaleDateString("id-ID",{day:"2-digit",month:"short",year:"numeric"}) : "–";
-const today = () => new Date().toISOString().split("T")[0];
+const today = () => { const d = new Date(); d.setMinutes(d.getMinutes() - d.getTimezoneOffset()); return d.toISOString().split("T")[0]; };
 const ddiff = (a,b) => Math.round((new Date(b)-new Date(a))/864e5);
 // Rekonsiliasi CA vs OER
 const recon = (trx) => {
@@ -824,7 +824,7 @@ function Dashboard({ data, user, nav, onUpdateUser }) {
   const mine    = user.role==="employee" ? data.filter(d=>d.submitter===user.name) : data;
   const pending = data.filter(d=>d.status==="pending");
   const approved= data.filter(d=>["approved","doc_complete"].includes(d.status));
-  const overdue = data.filter(d=>d.isLate===true);
+  const overdue = mine.filter(d=>d.isLate===true);
   const totalRp = mine.reduce((a,d)=>a+d.amount,0);
   const paidRp  = mine.filter(d=>d.status==="paid").reduce((a,d)=>a+d.amount,0);
   const active  = mine.filter(d=>["pending","approved","processing"].includes(d.status));
@@ -2987,10 +2987,10 @@ export default function App() {
     return () => document.removeEventListener("visibilitychange", onVisible);
   }, [user]);
 
-  // Polling setiap 15 detik — semua user (termasuk admin shared) dapat data real-time
+  // Polling setiap 5 menit (300000ms) agar server tidak overload
   useEffect(() => {
     if (!isReady() || !user) return;
-    const timer = setInterval(() => reloadData(), 15000);
+    const timer = setInterval(() => reloadData(), 300000);
     return () => clearInterval(timer);
   }, [user]);
 
