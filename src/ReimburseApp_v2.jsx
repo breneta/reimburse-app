@@ -884,11 +884,9 @@ function Dashboard({ data, user, nav, onUpdateUser }) {
 function SubmitPage({ user, onSubmit, data }) {
   const [f,setF] = useState({type:"reimburse",purpose:"",destination:"Jakarta",dateStart:"",dateEnd:"",approverName:"",notes:"",caRef:"",docRoute:"admin_jkt",items:[{cat:"Perjalanan Dinas",amt:""}]});
   const [submitState,setSubmitState] = useState("idle"); 
-  const [savedEntry,setSavedEntry]   = useState(null);
   const set=(k,v)=>setF(p=>({...p,[k]:v}));
   const si=(i,k,v)=>setF(p=>{const it=[...p.items];it[i]={...it[i],[k]:v};return{...p,items:it};});
   const total = f.items.reduce((a,it)=>a+(parseFloat(it.amt)||0),0);
-  const myCAs = (data||[]).filter(d=>d.type==="cash_advance"&&d.submitter===user.name&&["paid","awaiting_oer","oer_doc_pending","oer_doc_received","oer_doc_complete"].includes(d.status)&&!d.oerAmount);
 
   const submit = async () => {
     if (!f.purpose||!f.dateStart||!f.dateEnd||!f.approverName||total===0) { alert("Harap lengkapi semua field wajib (*)"); return; }
@@ -906,7 +904,6 @@ function SubmitPage({ user, onSubmit, data }) {
     if (!isReady()) { onSubmit(entry); return; }
 
     setSubmitState("saving");
-    setSavedEntry(entry);
 
     const res = await API.create(entry);
     if (!res) { setSubmitState("error"); return; }
@@ -1417,9 +1414,7 @@ function MonitorPage({ data, onSel, onAction }) {
   const totalRp = data.reduce((a,d)=>a+d.amount,0);
   const paidRp  = data.filter(d=>d.status==="paid").reduce((a,d)=>a+d.amount,0);
   const pct = totalRp?Math.round(paidRp/totalRp*100):0;
-  const overdue = data.filter(d=>d.isLate===true);
   const caOut   = data.filter(d=>d.type==="cash_advance"&&!d.settled&&!["rejected","settled"].includes(d.status));
-  const needSettle = data.filter(d=>d.type==="cash_advance"&&["kurang_bayar","lebih_bayar"].includes(d.status)&&!d.settled);
 
   const actionable = data.filter(d=>["doc_complete","approved","processing"].includes(d.status));
   const selIds = Object.keys(sel).filter(k=>sel[k]);
@@ -1650,10 +1645,6 @@ function FilingPage({ data, onSaveDoc }) {
 function SettingsPage({ onSave }) {
   const [sbUrl,setSbUrl] = useState(CONFIG.SUPABASE_URL);
   const [sbKey,setSbKey] = useState(CONFIG.SUPABASE_KEY);
-  const [pf,setPf]       = useState(CONFIG.PASS_FINANCE);
-  const [palk,setPalk]   = useState(CONFIG.PASS_ADMIN_LK);
-  const [pajkt,setPajkt] = useState(CONFIG.PASS_ADMIN_JKT);
-  const [pga,setPga]     = useState(CONFIG.PASS_GA);
   const [saved,setSaved] = useState(false);
   const [testing,setTesting]   = useState(false);
   const [testResult,setTestResult] = useState(null);
@@ -1661,11 +1652,7 @@ function SettingsPage({ onSave }) {
   const save = () => {
     CONFIG.SUPABASE_URL   = sbUrl.trim();
     CONFIG.SUPABASE_KEY   = sbKey.trim();
-    CONFIG.PASS_FINANCE   = pf;
-    CONFIG.PASS_ADMIN_LK  = palk;
-    CONFIG.PASS_ADMIN_JKT = pajkt;
-    CONFIG.PASS_GA        = pga;
-    _saveConfig({ SUPABASE_URL:sbUrl.trim(), SUPABASE_KEY:sbKey.trim(), PASS_FINANCE:pf, PASS_ADMIN_LK:palk, PASS_ADMIN_JKT:pajkt, PASS_GA:pga });
+    _saveConfig({ SUPABASE_URL:sbUrl.trim(), SUPABASE_KEY:sbKey.trim() });
     setSaved(true); setTimeout(()=>setSaved(false),2500);
     if (onSave) onSave();
   };
@@ -1700,6 +1687,10 @@ function SettingsPage({ onSave }) {
               {testing ? "Testing..." : "🔌 Test Koneksi"}
             </button>
             {testResult && <span style={{fontSize:12,fontWeight:700,color:testResult.startsWith("✓")?"var(--gn)":"var(--rd)"}}>{testResult}</span>}
+          </div>
+          <div style={{display:"flex",justifyContent:"flex-end",marginTop:12,gap:9,alignItems:"center"}}>
+            {saved && <span style={{color:"var(--gn)",fontWeight:700,fontSize:13}}>✓ Disimpan!</span>}
+            <button className="btn bp" onClick={save}><Ic n="check" s={13}/>Simpan Perubahan</button>
           </div>
         </div>
       </div>
