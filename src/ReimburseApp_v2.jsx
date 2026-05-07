@@ -88,25 +88,12 @@ const workdaysSinceEnd = (dateEnd) => {
 
 const isOverdue = (d) => {
   if (!d.dateEnd) return false;
-  if (d.type === "cash_advance") {
-    const OER_SUBMITTED = ["oer_doc_pending","oer_doc_received","oer_doc_complete","kurang_bayar","lebih_bayar","awaiting_confirm","employee_confirmed","settled"];
-    if (OER_SUBMITTED.includes(d.status) || d.oerDate) return false;
-    const PRE_DISBURSE = ["pending","doc_received_lk","doc_sent_jkt","doc_received_jkt","doc_complete","approved","processing","rejected"];
-    if (PRE_DISBURSE.includes(d.status)) return false;
-    return workdaysSinceEnd(d.dateEnd) > 5;
-  }
-  if (d.type === "reimburse") {
-    if (!d.submitted) return false;
-    let end = new Date(d.dateEnd); end.setHours(0,0,0,0);
-    let sub = new Date(d.submitted); sub.setHours(0,0,0,0);
-    let days = 0, cur = new Date(end); cur.setDate(cur.getDate()+1);
-    while (cur <= sub) { 
-      if (cur.getDay()!==0 && cur.getDay()!==6) days++; 
-      cur.setDate(cur.getDate()+1); 
-    }
-    return days > 5;
-  }
-  return false;
+  // Terlambat = status masih "pending" lebih dari 5 hari kerja sejak trip selesai
+  // (artinya karyawan belum menyerahkan dokumen ke Admin LK/JKT)
+  // Kalau sudah doc_received_* ke atas → dokumen sudah diserahkan, tidak terlambat
+  if (d.status !== "pending") return false;
+  if (d.settled || d.status === "rejected") return false;
+  return workdaysSinceEnd(d.dateEnd) > 5;
 };
 
 const withLateFlagOnly = (d) => ({ ...d, isLate: isOverdue(d) });
@@ -1192,10 +1179,12 @@ export default function App() {
                       <button className="btn bo sm" onClick={()=>{
                         const rows = data.filter(d=>d.type==="cash_advance"&&!d.settled&&!["rejected"].includes(d.status));
                         if (!rows.length) return alert("Tidak ada data CA outstanding.");
-                        const headers = ["ID","Pemohon","Departemen","Keperluan","Tujuan","Trip Selesai","Keterlambatan (hari)","Jumlah","Status"];
+                        const headers = ["ID","Pemohon","Departemen","Keperluan","Tujuan","Trip Selesai","Hari Belum Serahkan Dok.","Status Dokumen","Jumlah","Status"];
                         const csvRows = rows.map(d=>{
-                          const late = Math.max(0, ddiff(d.dateEnd, today()) - 5);
-                          return [d.id, d.submitter, d.dept, d.purpose, d.destination, d.dateEnd, late > 0 ? `+${late}` : "Dalam batas", d.amount, STATUS[d.status]?.label||d.status];
+                          const daysSince = workdaysSinceEnd(d.dateEnd);
+                          const isPending = d.status === "pending";
+                          const hariCol = isPending ? (daysSince > 5 ? `+${daysSince} hari (TERLAMBAT)` : `${daysSince} hari`) : "Dokumen sudah diserahkan";
+                          return [d.id, d.submitter, d.dept, d.purpose, d.destination, d.dateEnd, hariCol, isPending?"Belum diserahkan":"Sudah diserahkan", d.amount, STATUS[d.status]?.label||d.status];
                         });
                         const csv = [headers, ...csvRows].map(r => r.map(c => `"${String(c??'').replace(/"/g,'""')}"`).join(",")).join("\n");
                         const blob = new Blob(["\uFEFF"+csv], {type:"text/csv;charset=utf-8;"});
@@ -1207,16 +1196,24 @@ export default function App() {
                       </button>
                     </div>
                     <div className="tw"><table>
-                      <thead><tr><th>ID</th><th>Pemohon</th><th>Keperluan</th><th>Trip Selesai</th><th>Keterlambatan</th><th>Jumlah</th><th>Status</th></tr></thead>
+                      <thead><tr><th>ID</th><th>Pemohon</th><th>Keperluan</th><th>Trip Selesai</th><th>Hari Belum Serahkan Dok.</th><th>Jumlah</th><th>Status</th></tr></thead>
                       <tbody>{data.filter(d=>d.type==="cash_advance"&&!d.settled&&!["rejected"].includes(d.status)).map(d=>{
-                        const late=Math.max(0,ddiff(d.dateEnd,today())-5);
+                        const daysSince = workdaysSinceEnd(d.dateEnd);
+                        const isPending = d.status === "pending";
                         return (
                           <tr key={d.id} onClick={()=>setSelId(d.id)} style={{cursor:"pointer"}}>
                             <td><span className="mono">{d.id}</span></td>
                             <td><div className="bold">{d.submitter}</div><div style={{fontSize:11,color:"var(--i3)"}}>{d.dept}</div></td>
                             <td><div className="trunc" style={{maxWidth:140}}>{d.purpose}</div></td>
                             <td>{fd(d.dateEnd)}</td>
-                            <td>{late>0?<span style={{fontWeight:800,color:"var(--rd)"}}>+{late} hari</span>:<span style={{color:"var(--am)"}}>Dalam batas</span>}</td>
+                            <td>
+                              {isPending
+                                ? daysSince > 5
+                                  ? <span style={{fontWeight:800,color:"var(--rd)"}}>+{daysSince} hari ⚠️</span>
+                                  : <span style={{color:"var(--am)"}}>{daysSince} hari</span>
+                                : <span style={{color:"var(--gn)",fontWeight:700}}>✓ Dokumen diserahkan</span>
+                              }
+                            </td>
                             <td className="bold">{rp(d.amount)}</td>
                             <td><SBadge s={d.status}/><LateBadge d={d}/></td>
                           </tr>
