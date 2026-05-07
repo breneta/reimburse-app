@@ -53,6 +53,9 @@ const OER_CATS = [
   "Meal Allowance","Uang Saku","Airport Tax","Lain-lain"
 ];
 
+const DEMO = [];
+const ddiff = (a,b) => Math.round((new Date(b)-new Date(a))/864e5);
+
 const gid = () => {
   const now = new Date();
   const yy  = String(now.getFullYear()).slice(2);
