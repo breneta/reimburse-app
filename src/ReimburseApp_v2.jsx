@@ -167,8 +167,153 @@ const API = {
 };
 
 // ═══════════════════════════════════════════════════════════════
-// UI COMPONENTS
+// STYLES
 // ═══════════════════════════════════════════════════════════════
+const CSS = `
+@import url('https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700;800&family=Playfair+Display:ital,wght@0,700;1,600&display=swap');
+*{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --bg:#f0f2f5;--w:#fff;--ink:#0c1824;--i2:#334155;--i3:#64748b;--i4:#94a3b8;
+  --ln:#e2e8f0;--ln2:#f1f5f9;
+  --tl:#0d9488;--tl2:#14b8a6;--tlb:#f0fdfa;--tlbd:#99f6e4;
+  --am:#d97706;--amb:#fffbeb;--ambd:#fde68a;
+  --rd:#dc2626;--rdb:#fef2f2;--rdbd:#fca5a5;
+  --bl:#2563eb;--blb:#eff6ff;--blbd:#93c5fd;
+  --gn:#059669;--gnb:#ecfdf5;--gnbd:#6ee7b7;
+  --pu:#7c3aed;--pub:#f5f3ff;
+  --r:14px;--r2:10px;--r3:7px;
+  --s1:0 1px 3px rgba(0,0,0,.06);--s2:0 4px 20px rgba(0,0,0,.08);--s3:0 24px 60px rgba(0,0,0,.15),0 8px 20px rgba(0,0,0,.08);
+}
+body{font-family:'Sora',sans-serif;background:var(--bg);color:var(--ink);-webkit-font-smoothing:antialiased;font-size:14px}
+.lw{min-height:100vh;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#0c1824 0%,#0f2535 50%,#133040 100%);padding:20px;position:relative;overflow:hidden}
+.lr1{position:absolute;width:500px;height:500px;border-radius:50%;border:1px solid rgba(13,148,136,.15);top:-100px;right:-100px;pointer-events:none}
+.lr2{position:absolute;width:300px;height:300px;border-radius:50%;border:1px solid rgba(13,148,136,.1);bottom:-80px;left:-80px;pointer-events:none}
+.lc{background:rgba(255,255,255,.97);border-radius:20px;box-shadow:var(--s3);width:100%;max-width:420px;padding:36px;position:relative;z-index:1;animation:su .3s}
+@keyframes su{from{transform:translateY(24px);opacity:0}to{transform:none;opacity:1}}
+@keyframes fi{from{opacity:0}to{opacity:1}}
+@keyframes spin{to{transform:rotate(360deg)}}
+.l-ico{width:58px;height:58px;background:linear-gradient(135deg,var(--tl),var(--tl2));border-radius:16px;display:flex;align-items:center;justify-content:center;margin:0 auto 12px;font-size:26px;box-shadow:0 8px 20px rgba(13,148,136,.35)}
+.l-tabs{display:flex;background:var(--ln2);border-radius:var(--r2);padding:4px;margin-bottom:22px;gap:3px}
+.l-tab{flex:1;padding:8px;border-radius:8px;border:none;cursor:pointer;font-family:inherit;font-size:12.5px;font-weight:600;transition:.15s;background:transparent;color:var(--i3)}
+.l-tab.on{background:var(--w);color:var(--ink);box-shadow:var(--s1)}
+.l-fld{margin-bottom:13px}
+.l-fld label{display:block;font-size:11.5px;font-weight:700;color:var(--i2);margin-bottom:4px}
+.l-fld input,.l-fld select{width:100%;padding:10px 12px;border:1.5px solid var(--ln);border-radius:var(--r3);font-family:inherit;font-size:13.5px;color:var(--ink);outline:none;transition:.15s}
+.l-fld input:focus,.l-fld select:focus{border-color:var(--tl);box-shadow:0 0 0 3px rgba(13,148,136,.1)}
+.l-btn{width:100%;padding:12px;border-radius:var(--r2);border:none;cursor:pointer;font-family:inherit;font-size:14px;font-weight:700;background:var(--tl);color:#fff;box-shadow:0 4px 12px rgba(13,148,136,.3);transition:.15s;margin-top:4px}
+.l-btn:hover:not(:disabled){background:#0f766e}.l-btn:disabled{opacity:.6;cursor:not-allowed}
+.l-err{background:var(--rdb);border:1px solid var(--rdbd);color:#991b1b;padding:9px 12px;border-radius:var(--r3);font-size:12.5px;margin-bottom:12px;display:flex;align-items:center;gap:7px}
+.app{display:flex;min-height:100vh}
+.sb{width:252px;background:var(--ink);display:flex;flex-direction:column;position:fixed;height:100vh;z-index:200;transition:.25s}
+.main{flex:1;margin-left:252px;min-height:100vh;display:flex;flex-direction:column}
+.bar{height:56px;background:var(--w);border-bottom:1px solid var(--ln);display:flex;align-items:center;padding:0 24px;gap:10px;position:sticky;top:0;z-index:100}
+.page{padding:24px;flex:1}
+.sb-logo{padding:20px 18px 15px;border-bottom:1px solid rgba(255,255,255,.07)}
+.sb-lh{font-family:'Playfair Display',serif;font-size:20px;color:#fff;font-style:italic}
+.sb-u{padding:12px 14px;display:flex;align-items:center;gap:9px;border-bottom:1px solid rgba(255,255,255,.07);cursor:pointer;transition:.15s}
+.sb-u:hover{background:rgba(255,255,255,.05)}
+.av{width:35px;height:35px;border-radius:50%;background:linear-gradient(135deg,var(--tl),var(--tl2));display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;color:#fff;flex-shrink:0}
+.sb-un{font-size:13px;font-weight:700;color:#fff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sb-ur{font-size:11px;color:var(--i4);margin-top:1px;text-transform:capitalize;}
+.sb-nav{flex:1;padding:8px;overflow-y:auto}
+.nv{display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:8px;cursor:pointer;color:rgba(255,255,255,.45);font-size:13px;font-weight:500;margin-bottom:1px;transition:.12s;user-select:none}
+.nv:hover{background:rgba(255,255,255,.06);color:rgba(255,255,255,.8)}
+.nv.on{background:var(--tl);color:#fff;font-weight:600}
+.nv .nb{margin-left:auto;background:var(--rd);color:#fff;font-size:10px;font-weight:800;padding:1px 6px;border-radius:10px}
+.bt{font-size:15px;font-weight:800;flex:1}
+.br{display:flex;align-items:center;gap:8px}
+.cs{display:flex;align-items:center;gap:5px;padding:4px 11px;border-radius:20px;font-size:11px;font-weight:700}
+.cs-ok{background:var(--gnb);color:var(--gn);border:1px solid var(--gnbd)}
+.cs-no{background:var(--amb);color:var(--am);border:1px solid var(--ambd)}
+.card{background:var(--w);border-radius:var(--r);border:1px solid var(--ln);box-shadow:var(--s1)}
+.ch{padding:14px 20px;border-bottom:1px solid var(--ln);display:flex;align-items:center;justify-content:space-between;gap:12px}
+.ch h3{font-size:14px;font-weight:800}
+.cb{padding:18px 20px}
+.sg{display:grid;grid-template-columns:repeat(auto-fit,minmax(158px,1fr));gap:11px;margin-bottom:20px}
+.st{background:var(--w);border:1px solid var(--ln);border-radius:var(--r);padding:15px 17px;position:relative;box-shadow:var(--s1)}
+.st::before{content:'';position:absolute;top:0;left:0;width:3px;height:100%}
+.st.tl::before{background:var(--tl)}.st.am::before{background:var(--am)}.st.rd::before{background:var(--rd)}.st.gn::before{background:var(--gn)}
+.sl{font-size:10px;font-weight:700;color:var(--i3);text-transform:uppercase;letter-spacing:.07em;margin-bottom:5px}
+.sv{font-size:26px;font-weight:800;letter-spacing:-.03em;line-height:1}
+.sv.md{font-size:17px}
+.tw{overflow-x:auto}
+table{width:100%;border-collapse:collapse}
+th{padding:8px 13px;text-align:left;font-size:10.5px;font-weight:700;color:var(--i3);text-transform:uppercase;letter-spacing:.07em;border-bottom:2px solid var(--ln);background:var(--ln2);white-space:nowrap}
+td{padding:11px 13px;font-size:13px;color:var(--i2);border-bottom:1px solid var(--ln);vertical-align:middle}
+tr:last-child td{border-bottom:none}
+tbody tr:hover td{background:#fafbfd;}
+.btn{display:inline-flex;align-items:center;gap:6px;padding:8px 16px;border-radius:var(--r2);border:none;cursor:pointer;font-family:inherit;font-size:13px;font-weight:700;transition:.12s;line-height:1;white-space:nowrap}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+.bp{background:var(--tl);color:#fff;box-shadow:0 2px 6px rgba(13,148,136,.25)}.bp:hover:not(:disabled){background:#0f766e}
+.bg{background:var(--gn);color:#fff}.bg:hover:not(:disabled){background:#047857}
+.bo{background:transparent;color:var(--i2);border:1.5px solid var(--ln)}.bo:hover:not(:disabled){background:var(--ln2)}
+.sm{padding:5px 11px;font-size:12px;border-radius:8px}.xs{padding:3px 9px;font-size:11.5px;border-radius:6px}
+.fg{display:grid;gap:12px}.fg2{grid-template-columns:1fr 1fr}.fg3{grid-template-columns:1fr 1fr 1fr}
+label.fl{display:block;font-size:11.5px;font-weight:700;color:var(--i2);margin-bottom:4px}
+input,select,textarea{width:100%;padding:8px 11px;border:1.5px solid var(--ln);border-radius:var(--r3);font-family:inherit;font-size:13px;color:var(--ink);background:var(--w);outline:none;transition:.12s}
+input:focus,select:focus,textarea:focus{border-color:var(--tl);box-shadow:0 0 0 3px rgba(13,148,136,.1)}
+textarea{resize:vertical;min-height:70px;line-height:1.5}
+.fs{background:var(--ln2);border-radius:var(--r2);padding:13px;border:1px solid var(--ln)}
+.fst{font-size:10.5px;font-weight:800;color:var(--tl);text-transform:uppercase;letter-spacing:.1em;margin-bottom:10px}
+.badge{display:inline-flex;align-items:center;gap:5px;padding:3px 9px;border-radius:20px;font-size:11px;font-weight:700}
+.badge::before{content:'';width:5px;height:5px;border-radius:50%;background:currentColor;flex-shrink:0}
+.tag{display:inline-block;padding:2px 8px;border-radius:5px;font-size:11px;font-weight:700}
+.tca{background:#dbeafe;color:#1e40af}.tre{background:#f3e8ff;color:#6b21a8}
+.ov{position:fixed;inset:0;background:rgba(12,24,36,.65);backdrop-filter:blur(6px);z-index:300;display:flex;align-items:center;justify-content:center;padding:20px;animation:fi .15s}
+.mo{background:var(--w);border-radius:var(--r);box-shadow:var(--s3);width:100%;max-width:640px;max-height:90vh;overflow-y:auto;animation:su .18s}
+.mh{padding:16px 20px;border-bottom:1px solid var(--ln);display:flex;align-items:flex-start;justify-content:space-between;gap:12px;position:sticky;top:0;background:var(--w);z-index:1}
+.mb2{padding:20px}
+.tlr{display:flex;gap:10px;margin-bottom:12px}
+.tldc{display:flex;flex-direction:column;align-items:center}
+.tld{width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.tlln{width:2px;flex:1;margin-top:3px;background:var(--ln)}
+.tlb{flex:1;padding-top:2px}
+.tlt{font-size:12.5px;font-weight:700}
+.tls{font-size:11px;color:var(--i3);margin-top:2px}
+.al{padding:10px 13px;border-radius:var(--r2);font-size:12.5px;display:flex;align-items:flex-start;gap:8px;line-height:1.5}
+.aw{background:var(--amb);border:1px solid var(--ambd);color:#78350f}
+.ae{background:var(--rdb);border:1px solid var(--rdbd);color:#7f1d1d}
+.ag{background:var(--gnb);border:1px solid var(--gnbd);color:#064e3b}
+.ab{background:var(--blb);border:1px solid var(--blbd);color:#1e3a8a}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.mb3{margin-bottom:12px}.mb4{margin-bottom:16px}.mb5{margin-bottom:20px}
+.mt2{margin-top:8px}.mt3{margin-top:12px}.mt4{margin-top:16px}
+.bold{font-weight:700}.mono{font-family:ui-monospace,monospace;font-size:12px;font-weight:700;color:var(--tl)}
+.trunc{overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.empty{text-align:center;padding:44px 20px;color:var(--i4)}
+.sp2{display:inline-block;width:14px;height:14px;border:2.5px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:spin .6s linear infinite;vertical-align:middle}
+.toast{position:fixed;bottom:22px;right:22px;z-index:999;padding:11px 18px;border-radius:var(--r2);color:#fff;font-size:13px;font-weight:700;display:flex;align-items:center;gap:8px;box-shadow:var(--s3);animation:su .2s}
+.flt{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.flt input,.flt select{flex:1;min-width:130px;width:auto}
+.hero{background:linear-gradient(130deg,#0c1824 0%,#133040 60%,#164050 100%);border-radius:16px;padding:24px 28px;color:#fff;position:relative;overflow:hidden;margin-bottom:20px}
+.hr1{position:absolute;right:-30px;top:-30px;width:180px;height:180px;border-radius:50%;background:rgba(13,148,136,.12);pointer-events:none}
+.hr2{position:absolute;right:70px;bottom:-50px;width:130px;height:130px;border-radius:50%;background:rgba(20,184,166,.08);pointer-events:none}
+@media(max-width:800px){.sb{transform:translateX(-100%)}.sb.open{transform:none}.main{margin-left:0}.fg2,.fg3,.g2{grid-template-columns:1fr}.sg{grid-template-columns:1fr 1fr}.page{padding:14px}.bar{padding:0 14px}}
+@media(max-width:480px){.sg{grid-template-columns:1fr}}
+`;
+
+// ── Icons & Shared UI ────────────────────────────────────────
+const IP = {
+  home:"M3 12L12 3l9 9M9 21V12h6v9M3 12v9h18v-9", plus:"M12 5v14M5 12h14", list:"M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01",
+  check:"M20 6 9 17 4 12", x:"M18 6 6 18M6 6l12 12", clock:"M12 2a10 10 0 100 20 10 10 0 000-20zM12 6v6l4 2",
+  alert:"M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0zM12 9v4M12 17h.01",
+  money:"M1 4h22v16H1zM1 10h22", user:"M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2M12 3a4 4 0 100 8 4 4 0 000-8",
+  chart:"M18 20V10M12 20V4M6 20v-6M2 20h20", send:"M22 2L11 13M22 2l-7 20-4-9-9-4 20-7", trash:"M3 6h18M8 6V4a1 1 0 011-1h6a1 1 0 011 1v2M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6",
+  logout:"M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9", menu:"M3 12h18M3 6h18M3 18h18", refresh:"M23 4v6h-6M1 20v-6h6M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15",
+  settings:"M12 15a3 3 0 100-6 3 3 0 000 6zM19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z"
+};
+const Ic = ({ n, s=16, c="currentColor" }) => (<svg width={s} height={s} fill="none" stroke={c} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d={IP[n]||""}/></svg>);
+
+const SBadge = ({ s, trx, isOwner }) => {
+  let ds = s; if (isOwner && trx && (s==="paid"||s==="awaiting_oer") && trx.transferDate) { const t = new Date(); t.setHours(0,0,0,0); const ed = new Date(trx.transferDate); if(ed>=t) ds="paid_queued"; }
+  const c=STATUS[ds]||{label:ds,color:"#475569",bg:"#f1f5f9"}; return <span className="badge" style={{color:c.color,background:c.bg}}>{c.label}</span>;
+};
+const LateBadge = ({ d }) => d.isLate ? <span className="badge" style={{color:"#9f1239",background:"#fff1f2",marginLeft:4}}>⚠ Terlambat</span> : null;
+const TTag = ({ t }) => <span className={`tag ${t==="cash_advance"?"tca":"tre"}`}>{t==="cash_advance"?"CA":"Reimburse"}</span>;
+
+const LS_KEY2  = "reimburse_accounts_v3";
+const lsGet2   = () => { try { return JSON.parse(localStorage.getItem(LS_KEY2)||"{}"); } catch { return {}; } };
+const lsSave2  = (a) => { try { localStorage.setItem(LS_KEY2, JSON.stringify(a)); } catch {} };
 
 const PwInput = ({ value, onChange, placeholder, showState, toggleShow, onEnter }) => (
   <div style={{position:"relative"}}>
@@ -177,6 +322,9 @@ const PwInput = ({ value, onChange, placeholder, showState, toggleShow, onEnter 
   </div>
 );
 
+// ═══════════════════════════════════════════════════════════════
+// LOGIN SCREEN
+// ═══════════════════════════════════════════════════════════════
 function LoginScreen({ onLogin }) {
   const [tab,setTab] = useState("karyawan"); const [mode,setMode] = useState("login");
   const [err,setErr] = useState(""); const [show,setShow] = useState(false); const [show2,setShow2] = useState(false);
@@ -217,7 +365,8 @@ function LoginScreen({ onLogin }) {
             <div style={{textAlign:"center",marginTop:14}}><span style={{fontSize:12.5,color:"var(--i3)"}}>Belum punya akun? </span><button onClick={()=>{setMode("register");setErr("");}} style={{background:"none",border:"none",cursor:"pointer",fontSize:12.5,fontWeight:700,color:"var(--tl)"}}>Daftar</button></div></>
         )}
         {tab==="karyawan" && mode==="register" && (
-          <><div className="l-fld"><label>Nama Lengkap *</label><input value={regName} onChange={e=>{setRegName(e.target.value);clr();}} placeholder="Nama lengkap"/></div>
+          <><div style={{background:"var(--tlb)",border:"1px solid var(--tlbd)",borderRadius:"var(--r3)",padding:"9px 12px",marginBottom:14,fontSize:12,color:"#134e4a"}}>✨ Daftar sekali, langsung bisa login kapan saja.</div>
+            <div className="l-fld"><label>Nama Lengkap *</label><input value={regName} onChange={e=>{setRegName(e.target.value);clr();}} placeholder="Nama lengkap"/></div>
             <div className="l-fld"><label>Departemen *</label><select value={regDept} onChange={e=>setRegDept(e.target.value)}><option value="">-- Pilih --</option>{DEPTS.map(d=><option key={d}>{d}</option>)}</select></div>
             <div className="l-fld"><label>Area *</label><select value={regArea} onChange={e=>setRegArea(e.target.value)}><option value="">-- Pilih --</option>{AREAS.map(a=><option key={a}>{a}</option>)}</select></div>
             <div className="l-fld"><label>Username *</label><input value={regUser} onChange={e=>{setRegUser(e.target.value);clr();}} placeholder="Username"/></div>
@@ -235,6 +384,10 @@ function LoginScreen({ onLogin }) {
     </div>
   );
 }
+
+// ═══════════════════════════════════════════════════════════════
+// PAGE COMPONENTS
+// ═══════════════════════════════════════════════════════════════
 
 function Dashboard({ data, user, nav }) {
   const isMyTrx = (d) => d.submitterUsername===user.username || d.submitter===user.name;
@@ -284,6 +437,44 @@ function SubmitPage({ user, onSubmit, data }) {
       <div className="fs mb4"><div className="fst">Nama Admin Penerima *</div><input value={f.approverName} onChange={e=>set("approverName",e.target.value)} placeholder="Admin Jakarta / LK"/></div>
       <div style={{textAlign:"right"}}><button className="btn bp" onClick={submit} disabled={busy}>{busy?"Memproses...":"Kirim Pengajuan"}</button></div>
     </div></div>
+  );
+}
+
+function ListPage({ data, user, onSel }) {
+  const [q,setQ]=useState(""); const [st,setSt]=useState(""); const [tp,setTp]=useState("");
+  const isMyTrx = (d) => d.submitter===user.name || (user.username && d.submitterUsername===user.username);
+  const base = user.role==="employee" ? data.filter(isMyTrx) : data;
+  const rows = base.filter(d=>(!st||d.status===st)&&(!tp||d.type===tp)&&(!q||(d.purpose+d.id+d.submitter+d.destination).toLowerCase().includes(q.toLowerCase())));
+  return (
+    <div>
+      <div className="card mb4" style={{padding:"11px 16px"}}>
+        <div className="flt">
+          <input placeholder="Cari ID, nama, keperluan..." value={q} onChange={e=>setQ(e.target.value)} style={{flex:2}}/>
+          <select value={st} onChange={e=>setSt(e.target.value)}><option value="">Semua Status</option>{Object.entries(STATUS).map(([k,v])=><option key={k} value={k}>{v.label}</option>)}</select>
+          <select value={tp} onChange={e=>setTp(e.target.value)}><option value="">Semua Jenis</option><option value="reimburse">Reimburse</option><option value="cash_advance">Cash Advance</option></select>
+          {(q||st||tp)&&<button className="btn bo sm" onClick={()=>{setQ("");setSt("");setTp("");}}><Ic n="x" s={12}/>Reset</button>}
+        </div>
+      </div>
+      <div className="card">
+        <div className="ch"><h3>Daftar Pengajuan <span style={{fontSize:12,color:"var(--i4)",fontWeight:400}}>({rows.length})</span></h3></div>
+        <div className="tw"><table>
+          <thead><tr><th>ID</th><th>Pemohon</th><th>Jenis</th><th>Keperluan</th><th>Kota</th><th>Periode</th><th>Jumlah</th><th>Status</th></tr></thead>
+          <tbody>{rows.map(d=>(
+            <tr key={d.id} onClick={()=>onSel(d.id)}>
+              <td><span className="mono">{d.id}</span></td>
+              <td><div className="bold" style={{fontSize:13}}>{d.submitter}</div><div style={{fontSize:11,color:"var(--i3)"}}>{d.dept}</div></td>
+              <td><TTag t={d.type}/></td>
+              <td><div className="trunc" style={{maxWidth:155}}>{d.purpose}</div></td>
+              <td style={{fontSize:12,color:"var(--i3)"}}>{d.destination}</td>
+              <td style={{fontSize:11,color:"var(--i3)"}}>{fd(d.dateStart)}<br/>{fd(d.dateEnd)}</td>
+              <td className="bold">{rp(d.amount)}</td>
+              <td><SBadge s={d.status} trx={d} isOwner={user.role==="employee"}/><LateBadge d={d}/></td>
+            </tr>
+          ))}</tbody>
+        </table>{rows.length===0&&<div className="empty"><Ic n="list" s={36}/><p style={{marginTop:10}}>Tidak ada data</p></div>}
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -348,6 +539,74 @@ function SettingsPage({ onSave }) {
   );
 }
 
+function EditForm({ trx, user, onSave, onCancel }) {
+  const [f,setF] = useState({
+    type:        trx.type, purpose: trx.purpose, destination: trx.destination,
+    dateStart:   trx.dateStart, dateEnd: trx.dateEnd, approverName:trx.approverName,
+    notes:       trx.notes||"", items: trx.categories.map(c=>({cat:c.cat, amt:String(c.amt)})),
+  });
+  const [busy,setBusy] = useState(false);
+  const set  = (k,v) => setF(p=>({...p,[k]:v}));
+  const si   = (i,k,v) => setF(p=>{const it=[...p.items];it[i]={...it[i],[k]:v};return{...p,items:it};});
+  const total = f.items.reduce((a,it)=>a+(parseFloat(it.amt)||0),0);
+
+  const save = async () => {
+    if (!f.purpose||!f.dateStart||!f.dateEnd||!f.approverName||total===0){alert("Harap lengkapi semua field wajib.");return;}
+    setBusy(true);
+    const updated = {
+      ...trx, type: f.type, purpose: f.purpose, destination: f.destination, dateStart: f.dateStart, dateEnd: f.dateEnd,
+      approverName:f.approverName, notes: f.notes, amount: total, categories: f.items.map(it=>({cat:it.cat, amt:parseFloat(it.amt)||0})),
+    };
+    if (isReady()) await API.editData(trx.id, updated);
+    setBusy(false); onSave(updated);
+  };
+
+  return (
+    <div style={{padding:"4px 0"}}>
+      <div className="al aw mb4" style={{marginBottom:14}}><Ic n="alert" s={14} c="#d97706"/><span>Edit Pengajuan</span></div>
+      <div className="fs mb3">
+        <div className="fst">Jenis Pengajuan</div>
+        <div style={{display:"flex",gap:9}}>
+          {[["reimburse","💰 Reimburse"],["cash_advance","🏦 Cash Advance"]].map(([v,l])=>(
+            <label key={v} style={{flex:1,display:"flex",alignItems:"center",gap:8,padding:"9px 12px",borderRadius:"var(--r2)",border:`2px solid ${f.type===v?"var(--tl)":"var(--ln)"}`,background:f.type===v?"var(--tlb)":"var(--w)",cursor:"pointer",margin:0}}>
+              <input type="radio" name="etp" checked={f.type===v} onChange={()=>set("type",v)} style={{width:"auto",accentColor:"var(--tl)"}}/>
+              <span style={{fontSize:13,fontWeight:700}}>{l}</span>
+            </label>
+          ))}
+        </div>
+      </div>
+      <div className="fs mb3">
+        <div className="fst">Detail Perjalanan</div>
+        <div className="fg mb3"><label className="fl">Keperluan *</label><textarea value={f.purpose} onChange={e=>set("purpose",e.target.value)} rows={2}/></div>
+        <div className="fg fg3">
+          <div><label className="fl">Kota Tujuan</label><input value={f.destination} onChange={e=>set("destination",e.target.value)}/></div>
+          <div><label className="fl">Tgl Mulai</label><input type="date" value={f.dateStart} onChange={e=>set("dateStart",e.target.value)}/></div>
+          <div><label className="fl">Tgl Selesai</label><input type="date" value={f.dateEnd} onChange={e=>set("dateEnd",e.target.value)}/></div>
+        </div>
+      </div>
+      <div className="fs mb3">
+        <div className="fst">Rincian Biaya</div>
+        {f.items.map((it,i)=>(
+          <div key={i} style={{display:"flex",gap:9,alignItems:"flex-end",marginBottom:8}}>
+            <div style={{flex:2}}>{i===0&&<label className="fl">Kategori</label>}<select value={it.cat} onChange={e=>si(i,"cat",e.target.value)}>{CATS.map(c=><option key={c}>{c}</option>)}</select></div>
+            <div style={{flex:1.5}}>{i===0&&<label className="fl">Nominal (Rp)</label>}<input type="number" value={it.amt} onChange={e=>si(i,"amt",e.target.value)} placeholder="0" min="0"/></div>
+            {f.items.length>1&&<button className="btn bo xs" onClick={()=>setF(p=>({...p,items:p.items.filter((_,j)=>j!==i)}))} style={{color:"var(--rd)",borderColor:"#fca5a5",flexShrink:0}}><Ic n="trash" s={12}/></button>}
+          </div>
+        ))}
+        <button className="btn bo sm" onClick={()=>setF(p=>({...p,items:[...p.items,{cat:"Perjalanan Dinas",amt:""}]}))}><Ic n="plus" s={12}/>Tambah Item</button>
+      </div>
+      <div className="fg fg2 mb3">
+        <div className="fs"><div className="fst">Nama Admin *</div><input value={f.approverName} onChange={e=>set("approverName",e.target.value)}/></div>
+        <div className="fs"><div className="fst">Catatan</div><textarea value={f.notes} onChange={e=>set("notes",e.target.value)} rows={2}/></div>
+      </div>
+      <div style={{display:"flex",justifyContent:"flex-end",gap:9}}>
+        <button className="btn bo" onClick={onCancel} disabled={busy}>Batal</button>
+        <button className="btn bp" onClick={save} disabled={busy}>{busy?<span className="sp2"/>:<Ic n="check" s={13}/>}{busy?"Menyimpan...":"Simpan Perubahan"}</button>
+      </div>
+    </div>
+  );
+}
+
 function OerReconBox({ trx, rc, isFin, isOwner, onAction }) {
   const [editMode, setEditMode] = useState(false); const [items, setItems] = useState(OER_CATS.map(cat => ({ cat, amt: (trx.oerCategories||[]).find(x=>x.cat===cat) ? String((trx.oerCategories||[]).find(x=>x.cat===cat).amt) : "" })));
   const [oerNote, setOerNote] = useState(trx.oerNote||""); const editTotal = items.reduce((s,it)=>s+(parseFloat(it.amt)||0),0);
@@ -379,22 +638,30 @@ function DetailModal({ trx, user, onClose, onAction, onEdit }) {
   const isFin = user.role==="finance"; const isOwner = user.role==="employee" && (trx.submitterUsername===user.username || trx.submitter===user.name);
   const rc = recon(trx);
   
+  const OER_STATUSES = ["awaiting_oer","oer_doc_pending","oer_doc_received","oer_doc_complete","kurang_bayar","lebih_bayar","awaiting_confirm","employee_confirmed","settled"];
+  const isOERPhase = OER_STATUSES.includes(trx.status);
+  const OER_SUBMITTED = ["oer_doc_pending","oer_doc_received","oer_doc_complete","kurang_bayar","lebih_bayar","awaiting_confirm","employee_confirmed","settled"].includes(trx.status);
+  const docStatuses = ["doc_received_lk","doc_sent_jkt","doc_received_jkt","doc_complete","approved","processing","paid",...OER_STATUSES];
+
   const tlBase = [
     {ok:true, icon:"send", title:"Pengajuan Dikirim", sub:`${trx.submitter} · ${fd(trx.submitted)}`, col:"var(--tl)"},
-    {ok:!!trx.adminLkName || ["doc_received_jkt","doc_complete","approved","processing","paid","settled"].includes(trx.status), icon:"user", title:"Diterima Admin LK", sub:trx.adminLkName||"—", col:"var(--tl)"},
-    {ok:["doc_sent_jkt","doc_received_jkt","doc_complete","approved","processing","paid","settled"].includes(trx.status), icon:"send", title:"Dikirim ke Jakarta", sub:"", col:"var(--bl)"},
-    {ok:["doc_received_jkt","doc_complete","approved","processing","paid","settled"].includes(trx.status), icon:"user", title:"Diterima Admin JKT", sub:trx.adminJktName||"—", col:"var(--tl)"},
-    {ok:["doc_complete","approved","processing","paid","settled"].includes(trx.status), icon:"check", title:"Dokumen Lengkap (GA)", sub:trx.gaNote||"—", col:"var(--gn)"},
-    {ok:["processing","paid","settled","awaiting_oer","kurang_bayar","lebih_bayar"].includes(trx.status), icon:"money", title:"Diproses Finance", sub:"", col:"var(--pu)"},
+    {ok:docStatuses.includes(trx.status), icon:"user", title:"Diterima Admin LK", sub:trx.adminLkName||(trx.status==="pending"?"Menunggu dokumen fisik…":"–"), col:"var(--tl)"},
+    {ok:["doc_sent_jkt","doc_received_jkt","doc_complete","approved","processing","paid",...OER_STATUSES].includes(trx.status), icon:"send", title:"Dikirim ke Jakarta", sub:"", col:"var(--bl)"},
+    {ok:["doc_received_jkt","doc_complete","approved","processing","paid",...OER_STATUSES].includes(trx.status), icon:"user", title:"Diterima Admin JKT", sub:trx.adminJktName||"–", col:"var(--tl)"},
+    {ok:["doc_complete","approved","processing","paid",...OER_STATUSES].includes(trx.status), icon:"check", title:"Dokumen Lengkap (GA)", sub:trx.gaNote||"–", col:"var(--gn)"},
+    {ok:["processing","paid",...OER_STATUSES].includes(trx.status), icon:"money", title:"Diproses Finance", sub:"", col:"var(--pu)"},
   ];
+
   const tl = trx.type==="cash_advance" ? [
     ...tlBase,
-    {ok:["paid","awaiting_oer","oer_doc_pending","oer_doc_received","oer_doc_complete","kurang_bayar","lebih_bayar","settled"].includes(trx.status), icon:"check", title:"CA Dicairkan", sub:trx.settledDate?`Dibayar ${fd(trx.settledDate)}`:"", col:"var(--gn)"},
-    {ok:!!trx.oerDate, icon:"send", title:"OER Disubmit", sub:trx.oerDate?`${fd(trx.oerDate)} · ${rp(trx.oerAmount)}`:"", col:"#ca8a04"},
+    {ok:isOERPhase, icon:"check", title:"Pembayaran CA Pertama", sub:isOERPhase?`Dibayar ${fd(trx.settledDate)}`:"", col:"var(--gn)"},
+    {ok:OER_SUBMITTED, icon:"send", title:"OER Disubmit", sub:trx.oerDate?`${fd(trx.oerDate)} · ${rp(trx.oerAmount)}`:"", col:"#ca8a04"},
+    {ok:["oer_doc_received","oer_doc_complete","kurang_bayar","lebih_bayar","awaiting_confirm","employee_confirmed","settled"].includes(trx.status), icon:"user", title:"OER Diterima Admin JKT", sub:"", col:"var(--tl)"},
+    {ok:["oer_doc_complete","kurang_bayar","lebih_bayar","awaiting_confirm","employee_confirmed","settled"].includes(trx.status), icon:"check", title:"OER Disetujui GA", sub:trx.gaOerNote||"", col:"var(--gn)"},
     {ok:trx.settled||trx.status==="settled", icon:"check", title:"Selesai", sub:trx.settled?`Lunas ${fd(trx.settledDate)}`:"", col:"var(--gn)"}
   ] : [
     ...tlBase,
-    {ok:trx.status==="paid"||trx.settled, icon:"check", title:"Pembayaran Selesai", sub:trx.settledDate?`Lunas ${fd(trx.settledDate)}`:"", col:"var(--gn)"}
+    {ok:trx.status==="paid"||trx.settled, icon:"check", title:"Pembayaran Selesai", sub:(trx.status==="paid"||trx.settled)?`Lunas ${fd(trx.settledDate)}`:"", col:"var(--gn)"}
   ];
 
   const act = (a, n, d) => { setBusy(true); onAction(trx.id, a, n, trx.type, d); const s = a==="pay" ? (trx.type==="cash_advance"?"awaiting_oer":"paid") : "processing"; API.updateStatus(trx.id, {status:s, finance_note:n, transfer_date:d, settled_date:today()}); setBusy(false); };
@@ -451,7 +718,7 @@ export default function App() {
   return (
     <><style>{CSS}</style><div className="app">
       <div className="sb"><div className="sb-logo"><div className="sb-lh">ReimburseApp</div></div><div className="sb-u"><div className="av">{user.avatar}</div><div><div className="sb-un">{user.name}</div><div className="sb-ur">{user.role}</div></div></div>
-        <nav className="sb-nav">{(NAV[user.role]||[]).map(i=>(<div key={item.id} className={`nv${page===i.id?" on":""}`} onClick={()=>nav(i.id)}><Ic n={i.ic} s={14}/>{i.lb}</div>))}</nav>
+        <nav className="sb-nav">{(NAV[user.role]||[]).map(item=>(<div key={item.id} className={`nv${page===item.id?" on":""}`} onClick={()=>nav(item.id)}><Ic n={item.ic} s={14}/>{item.lb}</div>))}</nav>
         <div className="nv" style={{marginTop:"auto",opacity:0.5}} onClick={()=>window.location.reload()}>Log Out</div>
       </div>
       <div className="main">
@@ -474,10 +741,3 @@ export default function App() {
     {toast && <div className="toast" style={{background:"var(--ink)"}}>{toast.msg}</div>}</>
   );
 }
-
-const SBadge = ({ s, trx, isOwner }) => {
-  let ds = s; if (isOwner && trx && (s==="paid"||s==="awaiting_oer") && trx.transferDate) { const t = new Date(); t.setHours(0,0,0,0); const ed = new Date(trx.transferDate); if(ed>=t) ds="paid_queued"; }
-  const c=STATUS[ds]||{label:ds,color:"#475569",bg:"#f1f5f9"}; return <span className="badge" style={{color:c.color,background:c.bg}}>{c.label}</span>;
-};
-const LateBadge = ({ d }) => d.isLate ? <span className="badge" style={{color:"#9f1239",background:"#fff1f2",marginLeft:4}}>⚠ Telat</span> : null;
-const TTag = ({ t }) => <span className={`tag ${t==="cash_advance"?"tca":"tre"}`}>{t==="cash_advance"?"CA":"Reimburse"}</span>;
