@@ -141,7 +141,7 @@ const SB = {
       approverName:r.approver_name||"", financeNote:r.finance_note||"",
       oerAmount:r.oer_amount||0, oerCategories:r.oer_categories||[], oerNote:r.oer_note||"", oerDate:r.oer_date||"",
       caRef:r.ca_ref||"", bankVoucherNo:r.bank_voucher_no||"", docNo:r.doc_no||"", sapText:r.sap_text||"",
-      transferTo:r.transfer_to||"", transferProof:r.transfer_proof||"", docRoute:r.doc_route||"admin_jkt",
+      transferProof:r.transfer_proof||"", docRoute:r.doc_route||"admin_jkt",
       adminLkName:r.admin_lk_name||"", adminJktName:r.admin_jkt_name||"", gaNote:r.ga_note||"", gaOerNote:r.ga_oer_note||"", area:r.area||"Jakarta",
     }));
   },
@@ -222,19 +222,19 @@ const SB = {
     if (existing && existing.length>0) return { ok:false, error:"Username sudah dipakai" };
     const res = await SB.req("POST","accounts",{
       username:acc.username.toLowerCase(), password:acc.password, name:acc.name, dept:acc.dept, area:acc.area||"Jakarta",
-      bank_account:"", account_name:"", created_at:new Date().toISOString()
+      created_at:new Date().toISOString()
     });
     return res ? { ok:true } : { ok:false, error:"Gagal menyimpan akun" };
   },
 
   async loginAcc(username, password) {
-    const rows = await SB.req("GET","accounts",null,{"username":"eq."+username.toLowerCase(),"password":"eq."+password,"select":"username,name,dept,area,bank_account,account_name"});
+    // 🔴 Hapus bank_account dan account_name dari request SELECT
+    const rows = await SB.req("GET","accounts",null,{"username":"eq."+username.toLowerCase(),"password":"eq."+password,"select":"username,name,dept,area"});
     if (rows && rows.length>0) return { ok:true, ...rows[0] };
     return { ok:false, error:"Username atau password salah" };
   },
 
-  async updateBankInfo(username, bankAccount, accountName) { return SB.req("PATCH","accounts",{bank_account:bankAccount, account_name:accountName},{"username":"eq."+username}); },
-  async getAllAccounts() { return SB.req("GET","accounts",null,{"select":"username,name,dept,area,bank_account,account_name"}); },
+  async getAllAccounts() { return SB.req("GET","accounts",null,{"select":"username,name,dept,area"}); },
 };
 
 const API = {
@@ -244,7 +244,6 @@ const API = {
   submitOer:   (id,d,ca)=> SB.submitOer(id,d,ca),
   registerAcc: (acc)    => SB.registerAcc(acc),
   loginAcc:    (u,p)    => SB.loginAcc(u,p),
-  updateBankInfo:(u,b,n)=> SB.updateBankInfo(u,b,n),
   getAllAccounts:()      => SB.getAllAccounts(),
   editData:    (id,d)       => SB.editData(id,d),
   updateOer:   (id,cats,note,ca) => SB.updateOer(id,cats,note,ca),
@@ -256,7 +255,6 @@ const API = {
   oerDocReceived: (id,n)     => SB.oerDocReceived(id,n),
   oerDocComplete: (id,note,ca,oer) => SB.oerDocComplete(id,note,ca,oer),
 };
-
 
 // ═══════════════════════════════════════════════════════════════
 // STYLES
@@ -1989,7 +1987,11 @@ export default function App() {
   };
 
   const handleLogout = () => { setUser(null); setPage("dashboard"); setData(DEMO); setSideOpen(false); };
-  const handleUpdateUser = (patch) => { setUser(prev => ({...prev, ...patch})); };
+
+  const handleUpdateUser = (patch) => {
+    setUser(prev => ({...prev, ...patch}));
+  };
+
   const showToast = (msg, type="ok") => { setToast({msg,type}); setTimeout(()=>setToast(null),3000); };
 
   const reloadData = async () => {
