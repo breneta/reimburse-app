@@ -933,7 +933,7 @@ function ListPage({ data, user, onSel }) {
 // ═══════════════════════════════════════════════════════════════
 // ADMIN LK QUEUE
 // ═══════════════════════════════════════════════════════════════
-function AdminLKQueue({ data, onAction, onSel }) {
+function AdminLKQueue({ data, onAction, onSel, user }) {
   const [sel, setSel] = useState({});
   const [adminName, setAdminName] = useState("");
   const [searchQ, setSearchQ] = useState("");
@@ -951,7 +951,10 @@ function AdminLKQueue({ data, onAction, onSel }) {
   };
 
   const doSendJkt = (ids) => {
-    ids.forEach(id => { onAction(id, "doc_sent_jkt", null); if (isReady()) API.docSentJkt(id).catch(()=>{}); });
+    ids.forEach(id => {
+      onAction(id, "doc_sent_jkt", null);
+      if (isReady()) API.docSentJkt(id).catch(()=>{});
+    });
     setSel({});
   };
 
@@ -961,63 +964,113 @@ function AdminLKQueue({ data, onAction, onSel }) {
 
   return (
     <div>
-      <div className="al ab mb4"><Ic n="bell" s={14} c="#2563eb"/><span><strong>Admin Luar Kota</strong> — Terima dokumen fisik dari karyawan, lalu kirim ke Jakarta.</span></div>
+      <div className="al ab mb4"><Ic n="bell" s={14} c="#2563eb"/><span><strong>Admin Luar Kota</strong> — Terima dokumen fisik dari karyawan luar kota, lalu kirim ke Jakarta.</span></div>
+
       <div className="card" style={{marginBottom:12}}>
         <div style={{padding:"10px 14px",display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
-          <div><label style={{fontSize:12,fontWeight:700,display:"block",marginBottom:6}}>Cari Nama Pemohon</label><input value={searchQ} onChange={e=>setSearchQ(e.target.value)} style={{marginBottom:0}}/></div>
-          <div><label style={{fontSize:12,fontWeight:700,display:"block",marginBottom:6}}>Nama Admin (dicatat di sistem) *</label><input value={adminName} onChange={e=>setAdminName(e.target.value)} style={{marginBottom:0}}/></div>
+          <div>
+            <label style={{fontSize:12,fontWeight:700,color:"var(--i2)",display:"block",marginBottom:6}}>Cari Nama Pemohon</label>
+            <input value={searchQ} onChange={e=>setSearchQ(e.target.value)} placeholder="Ketik nama atau ID..." style={{marginBottom:0}}/>
+          </div>
+          <div>
+            <label style={{fontSize:12,fontWeight:700,color:"var(--i2)",display:"block",marginBottom:6}}>Nama Admin (dicatat di sistem) *</label>
+            <input value={adminName} onChange={e=>setAdminName(e.target.value)} placeholder="Nama Admin yang bertugas hari ini" style={{marginBottom:0}}/>
+          </div>
         </div>
       </div>
+
       <div className="card" style={{marginBottom:12}}>
         <div className="ch">
           <h3>Menunggu Dokumen Diterima</h3>
           {selIds.filter(k=>queue.find(d=>d.id===k)).length > 0 && (
-            <button className="btn bg sm" onClick={()=>doReceive(selIds.filter(k=>queue.find(d=>d.id===k)))}>Terima {selIds.filter(k=>queue.find(d=>d.id===k)).length} Dipilih</button>
+            <button className="btn bg sm" onClick={()=>doReceive(selIds.filter(k=>queue.find(d=>d.id===k)))}>
+              <Ic n="check" s={12}/>Terima {selIds.filter(k=>queue.find(d=>d.id===k)).length} Dipilih
+            </button>
           )}
         </div>
         <div className="tw"><table>
-          <thead><tr><th><input type="checkbox" style={{width:"auto"}} onChange={e=>{const s={};queue.forEach(d=>{s[d.id]=e.target.checked;});setSel(p=>({...p,...s}));}}/></th><th>ID</th><th>Pemohon</th><th>Keperluan</th><th>Aksi</th></tr></thead>
+          <thead><tr>
+            <th><input type="checkbox" style={{width:"auto"}} onChange={e=>{const s={};queue.forEach(d=>{s[d.id]=e.target.checked;});setSel(p=>({...p,...s}));}}/></th>
+            <th>ID</th><th>Pemohon</th><th>Keperluan</th><th>Tujuan & Tanggal</th><th>Aksi</th>
+          </tr></thead>
           <tbody>{queue.map(d=>(
             <tr key={d.id} onClick={()=>onSel(d.id)} style={{cursor:"pointer"}}>
               <td onClick={e=>e.stopPropagation()}><input type="checkbox" style={{width:"auto"}} checked={!!sel[d.id]} onChange={e=>setSel(p=>({...p,[d.id]:e.target.checked}))}/></td>
-              <td><span className="mono">{d.id}</span></td><td><div className="bold">{d.submitter}</div></td><td><div className="trunc" style={{maxWidth:140}}>{d.purpose}</div></td>
-              <td onClick={e=>e.stopPropagation()}><button className="btn bg xs" onClick={()=>doReceive([d.id])}><Ic n="check" s={11}/>Terima</button></td>
+              <td><span className="mono">{d.id}</span></td>
+              <td><div className="bold">{d.submitter}</div><div style={{fontSize:11,color:"var(--i3)"}}>{d.dept}</div></td>
+              <td><div className="trunc" style={{maxWidth:130}}>{d.purpose}</div></td>
+              <td>
+                <div className="bold" style={{fontSize:12}}>{d.destination}</div>
+                <div style={{fontSize:11,color:"var(--i3)"}}>{fd(d.dateStart)} – {fd(d.dateEnd)}</div>
+              </td>
+              <td onClick={e=>e.stopPropagation()}>
+                <button className="btn bg xs" onClick={()=>doReceive([d.id])}><Ic n="check" s={11}/>Terima</button>
+              </td>
             </tr>
           ))}</tbody>
-        </table></div>
+        </table>{queue.length===0&&<div className="empty"><Ic n="check" s={36}/><p style={{marginTop:10}}>Tidak ada antrian 🎉</p></div>}
+        </div>
       </div>
+
       {received.length > 0 && (
         <div className="card">
           <div className="ch">
             <h3>Sudah Diterima — Kirim ke Jakarta</h3>
-            {selReceivedIds.length > 0 && <button className="btn bp sm" onClick={()=>doSendJkt(selReceivedIds)}>✈️ Kirim {selReceivedIds.length} ke JKT</button>}
+            {selReceivedIds.length > 0 && (
+              <button className="btn bp sm" onClick={()=>doSendJkt(selReceivedIds)}>
+                ✈️ Kirim {selReceivedIds.length} ke Jakarta
+              </button>
+            )}
           </div>
           <div className="tw"><table>
-            <thead><tr><th><input type="checkbox" style={{width:"auto"}} onChange={e=>{const s={};received.forEach(d=>{s[d.id]=e.target.checked;});setSel(p=>({...p,...s}));}}/></th><th>ID</th><th>Pemohon</th><th>Aksi</th></tr></thead>
+            <thead><tr>
+              <th><input type="checkbox" style={{width:"auto"}} onChange={e=>{const s={};received.forEach(d=>{s[d.id]=e.target.checked;});setSel(p=>({...p,...s}));}}/></th>
+              <th>ID</th><th>Pemohon</th><th>Keperluan</th><th>Tujuan & Tanggal</th><th>Aksi</th>
+            </tr></thead>
             <tbody>{received.map(d=>(
               <tr key={d.id} onClick={()=>onSel(d.id)} style={{cursor:"pointer"}}>
                 <td onClick={e=>e.stopPropagation()}><input type="checkbox" style={{width:"auto"}} checked={!!sel[d.id]} onChange={e=>setSel(p=>({...p,[d.id]:e.target.checked}))}/></td>
-                <td><span className="mono">{d.id}</span></td><td><div className="bold">{d.submitter}</div></td>
-                <td onClick={e=>e.stopPropagation()}><button className="btn bp xs" onClick={()=>doSendJkt([d.id])}>✈️ Kirim JKT</button></td>
+                <td><span className="mono">{d.id}</span></td>
+                <td><div className="bold">{d.submitter}</div></td>
+                <td><div className="trunc" style={{maxWidth:130}}>{d.purpose}</div></td>
+                <td>
+                  <div className="bold" style={{fontSize:12}}>{d.destination}</div>
+                  <div style={{fontSize:11,color:"var(--i3)"}}>{fd(d.dateStart)} – {fd(d.dateEnd)}</div>
+                </td>
+                <td onClick={e=>e.stopPropagation()}>
+                  <button className="btn bp xs" onClick={()=>doSendJkt([d.id])}>✈️ Kirim JKT</button>
+                </td>
               </tr>
             ))}</tbody>
           </table></div>
         </div>
       )}
-      {/* OER dari karyawan luar kota */}
+
       {(() => {
         const oerLKQueue = data.filter(d => d.status === "oer_doc_pending" && d.area && d.area !== "Jakarta");
         if (oerLKQueue.length === 0) return null;
         return (
           <div className="card" style={{marginTop:12}}>
-            <div className="ch"><h3 style={{color:"#0e7490"}}>OER Masuk — Karyawan Luar Kota</h3></div>
+            <div className="ch">
+              <h3 style={{color:"#0e7490"}}>OER Masuk — Karyawan Luar Kota</h3>
+            </div>
             <div className="tw"><table>
-              <thead><tr><th>ID CA</th><th>Pemohon</th><th>Aksi</th></tr></thead>
+              <thead><tr><th>ID CA</th><th>Pemohon</th><th>Keperluan</th><th>Tujuan & Tanggal</th><th>Aksi</th></tr></thead>
               <tbody>{oerLKQueue.map(d=>(
                 <tr key={d.id} onClick={()=>onSel(d.id)} style={{cursor:"pointer"}}>
-                  <td><span className="mono">{d.id}</span></td><td><div className="bold">{d.submitter}</div></td>
+                  <td><span className="mono">{d.id}</span></td>
+                  <td><div className="bold">{d.submitter}</div></td>
+                  <td><div className="trunc" style={{maxWidth:130}}>{d.purpose}</div></td>
+                  <td>
+                    <div className="bold" style={{fontSize:12}}>{d.destination}</div>
+                    <div style={{fontSize:11,color:"var(--i3)"}}>{fd(d.dateStart)} – {fd(d.dateEnd)}</div>
+                  </td>
                   <td onClick={e=>e.stopPropagation()}>
-                    <button className="btn bp xs" onClick={()=>{ if (!adminName.trim()) { alert("Isi nama Admin"); return; } onAction(d.id, "oer_doc_received", adminName); if (isReady()) API.oerDocReceived(d.id, adminName).catch(()=>{}); }}>✈️ Kirim JKT</button>
+                    <button className="btn bp xs" onClick={()=>{
+                      if (!adminName.trim()) { alert("Isi nama Admin dulu"); return; }
+                      onAction(d.id, "oer_doc_received", adminName);
+                      if (isReady()) API.oerDocReceived(d.id, adminName).catch(()=>{});
+                    }}>✈️ Kirim ke JKT</button>
                   </td>
                 </tr>
               ))}</tbody>
@@ -1029,6 +1082,8 @@ function AdminLKQueue({ data, onAction, onSel }) {
   );
 }
 
+// ═══════════════════════════════════════════════════════════════
+// ADMIN JKT QUEUE
 // ═══════════════════════════════════════════════════════════════
 function AdminJKTQueue({ data, onAction, onSel }) {
   const [sel, setSel] = useState({});
@@ -1054,19 +1109,33 @@ function AdminJKTQueue({ data, onAction, onSel }) {
           <div><label style={{fontSize:12,fontWeight:700,display:"block",marginBottom:6}}>Nama Admin Jakarta *</label><input value={adminName} onChange={e=>setAdminName(e.target.value)} style={{marginBottom:0}}/></div>
         </div>
       </div>
+      
+      {/* Antrian dari Luar Kota */}
       <div className="card" style={{marginBottom:12}}>
         <div className="ch"><h3>Dari Luar Kota</h3>{selLKIds.length > 0 && <button className="btn bg sm" onClick={()=>doReceive(selLKIds)}>Terima {selLKIds.length}</button>}</div>
         <div className="tw"><table>
-          <thead><tr><th><input type="checkbox" style={{width:"auto"}} onChange={e=>{const s={};queue.forEach(d=>{s[d.id]=e.target.checked;});setSel(p=>({...p,...s}));}}/></th><th>ID</th><th>Pemohon</th><th>Aksi</th></tr></thead>
+          <thead><tr>
+            <th><input type="checkbox" style={{width:"auto"}} onChange={e=>{const s={};queue.forEach(d=>{s[d.id]=e.target.checked;});setSel(p=>({...p,...s}));}}/></th>
+            <th>ID</th><th>Pemohon</th><th>Admin LK</th><th>Keperluan</th><th>Tujuan & Tanggal</th><th>Aksi</th>
+          </tr></thead>
           <tbody>{queue.map(d=>(
             <tr key={d.id} onClick={()=>onSel(d.id)} style={{cursor:"pointer"}}>
               <td onClick={e=>e.stopPropagation()}><input type="checkbox" style={{width:"auto"}} checked={!!sel[d.id]} onChange={e=>setSel(p=>({...p,[d.id]:e.target.checked}))}/></td>
-              <td><span className="mono">{d.id}</span></td><td><div className="bold">{d.submitter}</div></td>
+              <td><span className="mono">{d.id}</span></td>
+              <td><div className="bold">{d.submitter}</div></td>
+              <td style={{fontSize:12,color:"var(--tl)",fontWeight:700}}>{d.adminLkName||"-"} <span style={{color:"var(--i4)",fontWeight:400}}>({d.area||"-"})</span></td>
+              <td><div className="trunc" style={{maxWidth:130}}>{d.purpose}</div></td>
+              <td>
+                <div className="bold" style={{fontSize:12}}>{d.destination}</div>
+                <div style={{fontSize:11,color:"var(--i3)"}}>{fd(d.dateStart)} – {fd(d.dateEnd)}</div>
+              </td>
               <td onClick={e=>e.stopPropagation()}><button className="btn bg xs" onClick={()=>doReceive([d.id])}><Ic n="check" s={11}/>Terima</button></td>
             </tr>
           ))}</tbody>
         </table></div>
       </div>
+
+      {/* Antrian OER Masuk */}
       {(() => {
         const oerQueue = data.filter(d => d.status === "oer_doc_pending");
         if (oerQueue.length === 0) return null;
@@ -1074,10 +1143,16 @@ function AdminJKTQueue({ data, onAction, onSel }) {
           <div className="card" style={{marginBottom:12}}>
             <div className="ch"><h3 style={{color:"#0e7490"}}>OER Masuk</h3></div>
             <div className="tw"><table>
-              <thead><tr><th>ID CA</th><th>Pemohon</th><th>Aksi</th></tr></thead>
+              <thead><tr><th>ID CA</th><th>Pemohon</th><th>Keperluan</th><th>Tujuan & Tanggal</th><th>Aksi</th></tr></thead>
               <tbody>{oerQueue.map(d=>(
                 <tr key={d.id} onClick={()=>onSel(d.id)} style={{cursor:"pointer"}}>
-                  <td><span className="mono">{d.id}</span></td><td><div className="bold">{d.submitter}</div></td>
+                  <td><span className="mono">{d.id}</span></td>
+                  <td><div className="bold">{d.submitter}</div></td>
+                  <td><div className="trunc" style={{maxWidth:140}}>{d.purpose}</div></td>
+                  <td>
+                    <div className="bold" style={{fontSize:12}}>{d.destination}</div>
+                    <div style={{fontSize:11,color:"var(--i3)"}}>{fd(d.dateStart)} – {fd(d.dateEnd)}</div>
+                  </td>
                   <td onClick={e=>e.stopPropagation()}><button className="btn bg xs" onClick={()=>{ if (!adminName.trim()) { alert("Isi nama Admin"); return; } onAction(d.id, "oer_doc_received", adminName); if (isReady()) API.oerDocReceived(d.id, adminName).catch(()=>{}); }}><Ic n="check" s={11}/>Terima OER</button></td>
                 </tr>
               ))}</tbody>
@@ -1085,15 +1160,26 @@ function AdminJKTQueue({ data, onAction, onSel }) {
           </div>
         );
       })()}
+
+      {/* Antrian Karyawan Jakarta (Langsung) */}
       {jktPending.length > 0 && (
         <div className="card">
           <div className="ch"><h3>Karyawan Jakarta (Langsung)</h3>{selJKTIds.length > 0 && <button className="btn bg sm" onClick={()=>doReceive(selJKTIds)}>Terima {selJKTIds.length}</button>}</div>
           <div className="tw"><table>
-            <thead><tr><th><input type="checkbox" style={{width:"auto"}} onChange={e=>{const s={};jktPending.forEach(d=>{s[d.id]=e.target.checked;});setSel(p=>({...p,...s}));}}/></th><th>ID</th><th>Pemohon</th><th>Aksi</th></tr></thead>
+            <thead><tr>
+              <th><input type="checkbox" style={{width:"auto"}} onChange={e=>{const s={};jktPending.forEach(d=>{s[d.id]=e.target.checked;});setSel(p=>({...p,...s}));}}/></th>
+              <th>ID</th><th>Pemohon</th><th>Keperluan</th><th>Tujuan & Tanggal</th><th>Aksi</th>
+            </tr></thead>
             <tbody>{jktPending.map(d=>(
               <tr key={d.id} onClick={()=>onSel(d.id)} style={{cursor:"pointer"}}>
                 <td onClick={e=>e.stopPropagation()}><input type="checkbox" style={{width:"auto"}} checked={!!sel[d.id]} onChange={e=>setSel(p=>({...p,[d.id]:e.target.checked}))}/></td>
-                <td><span className="mono">{d.id}</span></td><td><div className="bold">{d.submitter}</div></td>
+                <td><span className="mono">{d.id}</span></td>
+                <td><div className="bold">{d.submitter}</div></td>
+                <td><div className="trunc" style={{maxWidth:140}}>{d.purpose}</div></td>
+                <td>
+                  <div className="bold" style={{fontSize:12}}>{d.destination}</div>
+                  <div style={{fontSize:11,color:"var(--i3)"}}>{fd(d.dateStart)} – {fd(d.dateEnd)}</div>
+                </td>
                 <td onClick={e=>e.stopPropagation()}><button className="btn bg xs" onClick={()=>doReceive([d.id])}><Ic n="check" s={11}/>Terima</button></td>
               </tr>
             ))}</tbody>
@@ -1147,7 +1233,7 @@ function GAQueue({ data, onAction, onSel }) {
         <div className="tw"><table>
           <thead><tr>
             <th><input type="checkbox" style={{width:"auto"}} onChange={e=>{const s={};queue.forEach(d=>{s[d.id]=e.target.checked;});setSel(p=>({...p,...s}));}}/></th>
-            <th>ID</th><th>Pemohon</th><th>Keperluan</th><th>Nominal OER</th><th>Aksi</th>
+            <th>ID</th><th>Pemohon</th><th>Keperluan</th><th>Tujuan & Tanggal</th><th>Nominal OER</th><th>Aksi</th>
           </tr></thead>
           <tbody>{queue.map(d=>(
             <tr key={d.id}>
@@ -1155,6 +1241,7 @@ function GAQueue({ data, onAction, onSel }) {
               <td style={{cursor:"pointer"}} onClick={()=>onSel(d.id)}><span className="mono">{d.id}</span></td>
               <td style={{cursor:"pointer"}} onClick={()=>onSel(d.id)}><div className="bold">{d.submitter}</div></td>
               <td style={{cursor:"pointer"}} onClick={()=>onSel(d.id)}><div className="trunc" style={{maxWidth:130}}>{d.purpose}</div></td>
+              <td><div className="bold" style={{fontSize:12}}>{d.destination}</div><div style={{fontSize:11,color:"var(--i3)"}}>{fd(d.dateStart)} – {fd(d.dateEnd)}</div></td>
               <td onClick={e=>e.stopPropagation()}>
                 {editOerId === d.id ? (
                   <div style={{display:"flex",gap:5,alignItems:"center"}}>
@@ -1177,7 +1264,7 @@ function GAQueue({ data, onAction, onSel }) {
         <div className="card" style={{marginTop:14}}>
           <div className="ch"><h3 style={{color:"#7c3aed"}}>OER Dokumen — Perlu Dikonfirmasi GA</h3></div>
           <div className="tw"><table>
-            <thead><tr><th>ID CA</th><th>Pemohon</th><th>Nominal CA</th><th>Nominal OER</th><th>Selisih</th><th>Aksi</th></tr></thead>
+            <thead><tr><th>ID CA</th><th>Pemohon</th><th>Keperluan</th><th>Tujuan & Tanggal</th><th>Nominal CA</th><th>Nominal OER</th><th>Selisih</th><th>Aksi</th></tr></thead>
             <tbody>{oerQueue.map(d=>{
               const oerSel = (d.oerAmount||0) - d.amount;
               const selLabel = oerSel > 0 ? `Kurang ${rp(oerSel)}` : oerSel < 0 ? `Lebih ${rp(Math.abs(oerSel))}` : "Pas";
@@ -1186,6 +1273,8 @@ function GAQueue({ data, onAction, onSel }) {
                 <tr key={d.id}>
                   <td style={{cursor:"pointer"}} onClick={()=>onSel(d.id)}><span className="mono">{d.id}</span></td>
                   <td><div className="bold">{d.submitter}</div></td>
+                  <td><div className="trunc" style={{maxWidth:130}}>{d.purpose}</div></td>
+                  <td><div className="bold" style={{fontSize:12}}>{d.destination}</div><div style={{fontSize:11,color:"var(--i3)"}}>{fd(d.dateStart)} – {fd(d.dateEnd)}</div></td>
                   <td style={{fontWeight:700}}>{rp(d.amount)}</td>
                   <td style={{fontWeight:700,color:"var(--tl)"}}>{d.oerAmount?rp(d.oerAmount):"—"}</td>
                   <td style={{fontWeight:800,color:selColor,fontSize:12}}>{selLabel}</td>
@@ -1201,7 +1290,7 @@ function GAQueue({ data, onAction, onSel }) {
 }
 
 // ═══════════════════════════════════════════════════════════════
-// MONITOR PAGE
+// MONITOR PAGE (Finance)
 // ═══════════════════════════════════════════════════════════════
 function MonitorPage({ data, onSel, onAction }) {
   const [sel, setSel]           = useState({});
@@ -1213,7 +1302,6 @@ function MonitorPage({ data, onSel, onAction }) {
   const caOut   = data.filter(d=>d.type==="cash_advance"&&!d.settled&&!["rejected","settled"].includes(d.status));
   const needSettle = data.filter(d=>d.type==="cash_advance"&&["kurang_bayar","lebih_bayar"].includes(d.status)&&!d.settled);
 
-  // BUG FIX: Sekarang "kurang_bayar", "lebih_bayar", dan "employee_confirmed" dimasukkan ke tabel agar bisa diklik Finance
   const actionable = data.filter(d=>["doc_complete","approved","processing","kurang_bayar","lebih_bayar","employee_confirmed"].includes(d.status) && !d.settled);
   
   const selIds = Object.keys(sel).filter(k=>sel[k]);
@@ -1225,7 +1313,7 @@ function MonitorPage({ data, onSel, onAction }) {
     selProcessable.forEach(id => {
       const trx = data.find(d=>d.id===id);
       onAction(id, "process", bulkNote, trx?.type);
-      if (isReady()) API.updateStatus(id, "processing", bulkNote).catch(()=>{});
+      if (isReady()) API.updateStatus(id, {status:"processing", finance_note:bulkNote}).catch(()=>{});
     });
     setSel({});
   };
@@ -1235,36 +1323,16 @@ function MonitorPage({ data, onSel, onAction }) {
       const trx = data.find(d=>d.id===id);
       const supaStatus = trx?.type==="cash_advance" ? "awaiting_oer" : "paid";
       onAction(id, "pay", bulkNote, trx?.type);
-      if (isReady()) API.updateStatus(id, supaStatus, bulkNote).catch(()=>{});
+      if (isReady()) API.updateStatus(id, {status:supaStatus, finance_note:bulkNote, settled_date:today()}).catch(()=>{});
     });
     setSel({});
   };
 
   return (
     <div>
-      {overdue.length>0 && <div className="al ae mb4"><Ic n="alert" s={14} c="#dc2626"/><div><strong>{overdue.length} CA Terlambat:</strong>{overdue.map(d=><div key={d.id} style={{marginTop:3,fontSize:11.5}}>• {d.id} – {d.submitter} ({d.dept})</div>)}</div></div>}
-      {needSettle.length>0 && (
-        <div className="al" style={{marginBottom:16,background:"#eff6ff",border:"1px solid #93c5fd",borderRadius:"var(--r2)",padding:"11px 14px",display:"flex",gap:10,alignItems:"flex-start"}}>
-          <Ic n="money" s={14} c="#1d4ed8"/>
-          <div>
-            <strong style={{color:"#1e3a8a"}}>{needSettle.length} CA perlu settlement:</strong>
-            {needSettle.map(d=>{
-              const rc=recon(d);
-              return <div key={d.id} style={{marginTop:4,fontSize:11.5,color:"#1e40af"}}>
-                • {d.id} – {d.submitter}: {rc?.isKurang?`Finance transfer ${rp(Math.abs(rc.selisih))} ke karyawan`:`Finance terima ${rp(Math.abs(rc?.selisih||0))} dari karyawan`}
-              </div>;
-            })}
-          </div>
-        </div>
-      )}
       <div className="sg mb5">
         <div className="st tl"><div className="sl">Total Diajukan</div><div className="sv md">{rp(totalRp)}</div><div className="ss">{data.length} pengajuan</div></div>
         <div className="st gn"><div className="sl">Sudah Dibayar</div><div className="sv md">{rp(paidRp)}</div><div className="pb"><div className="pbf" style={{width:`${pct}%`,background:"var(--gn)"}}/></div><div className="ss">{pct}%</div></div>
-        {Object.entries(STATUS).filter(([k])=>data.some(d=>d.status===k)).map(([k,v])=>(
-          <div key={k} className="st" style={{borderLeft:`3px solid ${v.dot}`}}>
-            <div className="sl">{v.label}</div><div className="sv">{data.filter(d=>d.status===k).length}</div>
-          </div>
-        ))}
       </div>
 
       {selDocs.length > 0 && (
@@ -1277,16 +1345,8 @@ function MonitorPage({ data, onSel, onAction }) {
             </div>
           </div>
           <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
-            {selProcessable.length>0 && (
-              <button className="btn bp sm" onClick={doBulkProcess}>
-                <Ic n="money" s={12}/>Mulai Proses {selProcessable.length}x
-              </button>
-            )}
-            {selPayable.length>0 && (
-              <button className="btn bg sm" onClick={doBulkPay}>
-                <Ic n="check" s={12}/>Tandai Dibayar {selPayable.length}x
-              </button>
-            )}
+            {selProcessable.length>0 && <button className="btn bp sm" onClick={doBulkProcess}><Ic n="money" s={12}/>Mulai Proses {selProcessable.length}x</button>}
+            {selPayable.length>0 && <button className="btn bg sm" onClick={doBulkPay}><Ic n="check" s={12}/>Tandai Dibayar {selPayable.length}x</button>}
             <button className="btn bo sm" onClick={()=>setSel({})}><Ic n="x" s={11}/>Batal</button>
           </div>
         </div>
@@ -1297,33 +1357,21 @@ function MonitorPage({ data, onSel, onAction }) {
         <div className="tw"><table>
           <thead><tr>
             <th><input type="checkbox" style={{width:"auto"}} onChange={e=>{const s={};actionable.forEach(d=>{s[d.id]=e.target.checked;});setSel(p=>({...p,...s}));}}/></th>
-            <th>ID</th><th>Pemohon</th><th>Keperluan</th><th>Jumlah</th><th>Status</th><th>Aksi</th>
+            <th>ID</th><th>Pemohon</th><th>Keperluan</th><th>Tujuan & Tanggal</th><th>Jumlah</th><th>Status</th><th>Aksi</th>
           </tr></thead>
           <tbody>{actionable.map(d=>(
             <tr key={d.id}>
               <td onClick={e=>e.stopPropagation()}><input type="checkbox" style={{width:"auto"}} checked={!!sel[d.id]} onChange={e=>setSel(p=>({...p,[d.id]:e.target.checked}))}/></td>
               <td style={{cursor:"pointer"}} onClick={()=>onSel(d.id)}><span className="mono">{d.id}</span></td>
-              <td style={{cursor:"pointer"}} onClick={()=>onSel(d.id)}><div className="bold" style={{fontSize:13}}>{d.submitter}</div><div style={{fontSize:11,color:"var(--i3)"}}>{d.dept}</div></td>
+              <td style={{cursor:"pointer"}} onClick={()=>onSel(d.id)}><div className="bold">{d.submitter}</div></td>
               <td style={{cursor:"pointer"}} onClick={()=>onSel(d.id)}><div className="trunc" style={{maxWidth:130}}>{d.purpose}</div></td>
+              <td><div className="bold" style={{fontSize:12}}>{d.destination}</div><div style={{fontSize:11,color:"var(--i3)"}}>{fd(d.dateStart)} – {fd(d.dateEnd)}</div></td>
               <td className="bold" style={{cursor:"pointer"}} onClick={()=>onSel(d.id)}>{rp(d.amount)}</td>
               <td><SBadge s={d.status}/><LateBadge d={d}/></td>
               <td onClick={e=>e.stopPropagation()}>
-                {["doc_complete","approved"].includes(d.status) && (
-                  <button className="btn bp xs" onClick={()=>{
-                    onAction(d.id,"process","",d.type);
-                    if(isReady()) API.updateStatus(d.id,"processing","").catch(()=>{});
-                  }}><Ic n="money" s={11}/>Proses</button>
-                )}
-                {d.status==="processing" && (
-                  <button className="btn bg xs" onClick={()=>{
-                    const supaStatus = d.type==="cash_advance"?"awaiting_oer":"paid";
-                    onAction(d.id,"pay","",d.type);
-                    if(isReady()) API.updateStatus(d.id,supaStatus,"").catch(()=>{});
-                  }}><Ic n="check" s={11}/>Dibayar</button>
-                )}
-                {["kurang_bayar","lebih_bayar","employee_confirmed"].includes(d.status) && (
-                  <button className="btn bo xs" onClick={()=>onSel(d.id)}>Buka Settle</button>
-                )}
+                {["doc_complete","approved"].includes(d.status) && <button className="btn bp xs" onClick={()=>{ onAction(d.id,"process",""); if(isReady()) API.updateStatus(d.id,{status:"processing"}); }}><Ic n="money" s={11}/>Proses</button>}
+                {d.status==="processing" && <button className="btn bg xs" onClick={()=>{ const supaStatus = d.type==="cash_advance"?"awaiting_oer":"paid"; onAction(d.id,"pay",""); if(isReady()) API.updateStatus(d.id,{status:supaStatus, settled_date:today()}); }}><Ic n="check" s={11}/>Dibayar</button>}
+                {["kurang_bayar","lebih_bayar","employee_confirmed"].includes(d.status) && <button className="btn bo xs" onClick={()=>onSel(d.id)}>Buka Settle</button>}
               </td>
             </tr>
           ))}</tbody>
@@ -1336,17 +1384,11 @@ function MonitorPage({ data, onSel, onAction }) {
           <div style={{maxHeight:340,overflowY:"auto"}}>
             {caOut.map(d=>(
               <div key={d.id} onClick={()=>onSel(d.id)} style={{padding:"11px 16px",borderBottom:"1px solid var(--ln)",cursor:"pointer",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                <div>
+                <div style={{flex:1}}>
                   <span className="mono">{d.id}</span>
                   <div className="bold" style={{fontSize:13}}>{d.submitter}</div>
-                  <div style={{fontSize:11,color:"var(--i3)"}}>Selesai: {fd(d.dateEnd)}</div>
-                  {workdaysSinceEnd(d.dateEnd)>0 && (
-                    <div style={{fontSize:10,fontWeight:700,color:workdaysSinceEnd(d.dateEnd)>5?"var(--rd)":"var(--am)",marginTop:2}}>
-                      {workdaysSinceEnd(d.dateEnd)>5
-                        ? `⚠️ Terlambat ${workdaysSinceEnd(d.dateEnd)-5} hr kerja`
-                        : `${5-workdaysSinceEnd(d.dateEnd)} hr kerja tersisa`}
-                    </div>
-                  )}
+                  <div style={{fontSize:11,color:"var(--i3)",marginTop:2}}><span className="bold" style={{color:"var(--ink)"}}>{d.destination}</span> | {fd(d.dateStart)} – {fd(d.dateEnd)}</div>
+                  <div className="trunc" style={{maxWidth:250,fontSize:11,color:"var(--i3)",marginTop:2}}>{d.purpose}</div>
                 </div>
                 <div style={{textAlign:"right"}}><div className="bold">{rp(d.amount)}</div><SBadge s={d.status}/><LateBadge d={d}/></div>
               </div>
