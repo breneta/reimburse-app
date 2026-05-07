@@ -736,11 +736,46 @@ function AdminJKTQueue({ data, onAction, onSel }) {
 
 function GAQueue({ data, onAction, onSel }) {
   const [gaNote, setGaNote] = useState("");
-  const queue = data.filter(d => d.status === "doc_received_jkt");
-  const oerQueue = data.filter(d => d.status === "oer_doc_received");
+  const [gaName, setGaName] = useState(""); // State baru untuk Nama GA
+  const [q, setQ] = useState(""); // State baru untuk Pencarian
+
+  // Antrian difilter berdasarkan status DAN input pencarian (nama pemohon)
+  const queue = data.filter(d => d.status === "doc_received_jkt").filter(d => !q || d.submitter.toLowerCase().includes(q.toLowerCase()));
+  const oerQueue = data.filter(d => d.status === "oer_doc_received").filter(d => !q || d.submitter.toLowerCase().includes(q.toLowerCase()));
   
+  const handleApproveDoc = (d) => {
+    if (!gaName.trim()) return alert("Isi nama GA bertugas terlebih dahulu!");
+    const finalNote = gaNote.trim() ? `[${gaName}] ${gaNote}` : `[${gaName}]`;
+    onAction(d.id, "doc_complete", finalNote); 
+    if(isReady()) API.docComplete(d.id, null, finalNote); 
+    setGaNote("");
+  };
+
+  const handleApproveOer = (d) => {
+    if (!gaName.trim()) return alert("Isi nama GA bertugas terlebih dahulu!");
+    const finalNote = gaNote.trim() ? `[${gaName}] ${gaNote}` : `[${gaName}]`;
+    onAction(d.id, "oer_doc_complete", finalNote); 
+    if(isReady()) API.oerDocComplete(d.id, finalNote, d.amount, d.oerAmount); 
+    setGaNote("");
+  };
+
   return (
     <div>
+      {/* Header Pencarian dan Input Nama GA */}
+      <div className="card mb3">
+        <div className="cb fg fg2">
+          <div>
+            <label className="fl">Cari Pemohon</label>
+            <input value={q} onChange={e=>setQ(e.target.value)} placeholder="Ketik nama karyawan..."/>
+          </div>
+          <div>
+            <label className="fl">GA Bertugas *</label>
+            <input value={gaName} onChange={e=>setGaName(e.target.value)} placeholder="Nama Anda"/>
+          </div>
+        </div>
+      </div>
+
+      {/* Tabel Dokumen Baru */}
       <div className="card mb3">
         <div className="ch">
           <h3>Antrian GA</h3>
@@ -754,12 +789,17 @@ function GAQueue({ data, onAction, onSel }) {
               <td><div className="bold">{d.submitter}</div></td>
               <td><span className="bold">{rp(d.amount)}</span></td>
               <td><div className="bold" style={{fontSize:12}}>{d.destination}</div><div style={{fontSize:11,color:"var(--i3)"}}>{fd(d.dateStart)} - {fd(d.dateEnd)}</div></td>
-              <td><button className="btn bg xs" onClick={e=>{e.stopPropagation(); onAction(d.id,"doc_complete",gaNote); API.docComplete(d.id,null,gaNote); setGaNote("");}}>✓ Lengkap</button></td>
+              <td>
+                <button className="btn bg xs" onClick={e=>{e.stopPropagation(); handleApproveDoc(d);}}>
+                  ✓ Lengkap
+                </button>
+              </td>
             </tr>
           ))}</tbody>
         </table></div>
       </div>
 
+      {/* Tabel Dokumen OER */}
       {oerQueue.length>0 && (
         <div className="card">
           <div className="ch"><h3 style={{color:"#7c3aed"}}>OER Dokumen — Perlu Approve</h3></div>
@@ -774,7 +814,11 @@ function GAQueue({ data, onAction, onSel }) {
                   <td><span className="bold">{rp(d.amount)}</span></td>
                   <td><div className="bold" style={{fontSize:12}}>{d.destination}</div><div style={{fontSize:11,color:"var(--i3)"}}>{fd(d.dateStart)} - {fd(d.dateEnd)}</div></td>
                   <td className="bold" style={{color:sel<0?"#7c3aed":"#059669"}}>{sel<0?`Lebih ${rp(Math.abs(sel))}`:sel>0?`Kurang ${rp(sel)}`:"Pas"}</td>
-                  <td><button className="btn bg xs" style={{background:"#7c3aed"}} onClick={e=>{e.stopPropagation(); onAction(d.id,"oer_doc_complete",gaNote); API.oerDocComplete(d.id,gaNote,d.amount,d.oerAmount); setGaNote("");}}>Approve OER</button></td>
+                  <td>
+                    <button className="btn bg xs" style={{background:"#7c3aed"}} onClick={e=>{e.stopPropagation(); handleApproveOer(d);}}>
+                      Approve OER
+                    </button>
+                  </td>
                 </tr>
               );
             })}</tbody>
