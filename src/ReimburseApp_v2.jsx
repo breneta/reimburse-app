@@ -2188,16 +2188,12 @@ function OerReconBox({ trx, rc, isFin, isOwner, onAction }) {
   };
 
   // Upload bukti transfer (hanya untuk kurang_bayar — bukti dari karyawan)
-  const [proofImg, setProofImg]   = useState(trx.transferProof||"");
   const [uploading, setUploading] = useState(false);
 
   const confirmOer = async () => {
-    // Ini hanya untuk kurang_bayar — karyawan konfirmasi akan dikembalikan
-    // proofImg di sini tidak wajib karena kurang_bayar tidak butuh bukti transfer
     setUploading(true);
     try {
-      if (proofImg && isReady()) await API.saveTransferProof(trx.id, proofImg).catch(()=>{});
-      onAction(trx.id, "emp_confirm", { transferProof: proofImg });
+      onAction(trx.id, "emp_confirm", {});
       if (isReady()) API.empConfirm(trx.id).catch(()=>{});
     } finally { setUploading(false); }
   };
