@@ -99,7 +99,6 @@ const withLateFlagOnly = (d) => ({ ...d, isLate: isOverdue(d) });
 
 // Nomor WhatsApp Finance — ganti sesuai nomor aktif (format internasional tanpa +)
 const FINANCE_WA = "6285921551618";
-const FINANCE_WA_NAME = "Finance PT. Roman Ceramics";
 
 // ── API ──────────────────────────────────────────────────────
 const SB = {
