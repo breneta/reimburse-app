@@ -1752,23 +1752,30 @@ function DetailModal({ trx, user, onClose, onAction, onEdit }) {
 
   const OER_STATUSES = ["awaiting_oer","oer_doc_pending","oer_doc_received","oer_doc_complete","kurang_bayar","lebih_bayar","awaiting_confirm","employee_confirmed","settled"];
   const isOERPhase = OER_STATUSES.includes(trx.status);
+  const OER_SUBMITTED = ["oer_doc_pending","oer_doc_received","oer_doc_complete","kurang_bayar","lebih_bayar","awaiting_confirm","employee_confirmed","settled"].includes(trx.status);
   const docStatuses = ["doc_received_lk","doc_sent_jkt","doc_received_jkt","doc_complete","approved","processing","paid",...OER_STATUSES];
-  const tl = [
+  
+  // Base timeline (sama untuk Reimburse dan CA)
+  const tlBase = [
     {ok:true, icon:"send", title:"Pengajuan Dikirim", sub:`${trx.submitter} · ${fd(trx.submitted)}`, col:"var(--tl)"},
     {ok:docStatuses.includes(trx.status), icon:"user", title:"Diterima Admin LK", sub:trx.adminLkName||(trx.status==="pending"?"Menunggu dokumen fisik…":"–"), col:"var(--tl)"},
     {ok:["doc_sent_jkt","doc_received_jkt","doc_complete","approved","processing","paid",...OER_STATUSES].includes(trx.status), icon:"send", title:"Dikirim ke Jakarta", sub:"", col:"var(--bl)"},
     {ok:["doc_received_jkt","doc_complete","approved","processing","paid",...OER_STATUSES].includes(trx.status), icon:"user", title:"Diterima Admin Jakarta", sub:trx.adminJktName||"–", col:"var(--tl)"},
     {ok:["doc_complete","approved","processing","paid",...OER_STATUSES].includes(trx.status), icon:"check", title:"Dokumen Lengkap (GA)", sub:trx.gaNote||"–", col:"var(--gn)"},
     {ok:["processing","paid",...OER_STATUSES].includes(trx.status), icon:"money", title:"Diproses Finance", sub:"", col:"var(--pu)"},
-    {ok:trx.status==="paid"||trx.status==="awaiting_oer", icon:"check", title:"Pembayaran CA Pertama", sub:trx.status==="awaiting_oer"?`Dibayar · ${fd(trx.settledDate)}`:"", col:"var(--gn)"},
-    ...(trx.type==="cash_advance" ? [
-      {ok:isOERPhase, icon:"send", title:"OER Disubmit Karyawan", sub:trx.oerDate?`${fd(trx.oerDate)} · ${rp(trx.oerAmount||0)}`:"", col:"#ca8a04"},
-      {ok:["oer_doc_received","oer_doc_complete","kurang_bayar","lebih_bayar","awaiting_confirm","employee_confirmed","settled"].includes(trx.status), icon:"user", title:"OER Diterima Admin JKT", sub:"", col:"var(--tl)"},
-      {ok:["oer_doc_complete","kurang_bayar","lebih_bayar","awaiting_confirm","employee_confirmed","settled"].includes(trx.status), icon:"check", title:"OER Disetujui GA", sub:trx.gaOerNote||"", col:"var(--gn)"},
-      {ok:trx.settled, icon:"check", title:"Rekonsiliasi Selesai", sub:trx.settled?`Lunas ✓ · ${fd(trx.settledDate)}`:"Menunggu", col:trx.settled?"var(--gn)":"var(--i4)"},
-    ] : [
-      {ok:trx.status==="paid"||trx.settled, icon:"check", title:"Pembayaran Selesai", sub:trx.settled?`${fd(trx.settledDate)}`:"Menunggu", col:trx.settled?"var(--gn)":"var(--i4)"},
-    ]),
+  ];
+
+  // Pisahkan ujung timeline berdasarkan jenis pengajuan
+  const tl = trx.type === "cash_advance" ? [
+    ...tlBase,
+    {ok:isOERPhase, icon:"check", title:"Pembayaran CA Pertama", sub:isOERPhase?`Dibayar · ${fd(trx.settledDate)}`:"", col:"var(--gn)"},
+    {ok:OER_SUBMITTED, icon:"send", title:"OER Disubmit Karyawan", sub:trx.oerDate?`${fd(trx.oerDate)} · ${rp(trx.oerAmount||0)}`:"", col:"#ca8a04"},
+    {ok:["oer_doc_received","oer_doc_complete","kurang_bayar","lebih_bayar","awaiting_confirm","employee_confirmed","settled"].includes(trx.status), icon:"user", title:"OER Diterima Admin JKT", sub:"", col:"var(--tl)"},
+    {ok:["oer_doc_complete","kurang_bayar","lebih_bayar","awaiting_confirm","employee_confirmed","settled"].includes(trx.status), icon:"check", title:"OER Disetujui GA", sub:trx.gaOerNote||"", col:"var(--gn)"},
+    {ok:trx.settled || trx.status==="settled", icon:"check", title:"Rekonsiliasi Selesai", sub:(trx.settled || trx.status==="settled")?`Lunas ✓ · ${fd(trx.settledDate)}`:"Menunggu", col:(trx.settled || trx.status==="settled")?"var(--gn)":"var(--i4)"}
+  ] : [
+    ...tlBase,
+    {ok:trx.status==="paid" || trx.settled, icon:"check", title:"Pembayaran Selesai", sub:(trx.status==="paid" || trx.settled)?`Lunas ✓ · ${fd(trx.settledDate)}`:"Menunggu", col:(trx.status==="paid" || trx.settled)?"var(--gn)":"var(--i4)"}
   ];
 
   return (
