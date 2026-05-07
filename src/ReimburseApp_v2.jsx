@@ -339,11 +339,11 @@ const IP = {
 const Ic = ({ n, s=16, c="currentColor" }) => (<svg width={s} height={s} fill="none" stroke={c} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d={IP[n]||""}/></svg>);
 
 const SBadge = ({ s, trx, isOwner }) => {
-  let ds = s; 
-  if (isOwner && trx && (s==="paid"||s==="awaiting_oer") && trx.transferDate) { 
-    const t = new Date(); t.setHours(0,0,0,0); 
-    const ed = new Date(trx.transferDate); 
-    if(ed>=t) ds="paid_queued"; 
+  let ds = s;
+  if (trx && trx.transferDate && (s==="paid"||s==="awaiting_oer")) {
+    // Bandingkan tanggal saja (string YYYY-MM-DD) agar bebas timezone
+    const todayStr = today();
+    if (trx.transferDate >= todayStr) ds = "paid_queued";
   }
   const c=STATUS[ds]||{label:ds,color:"#475569",bg:"#f1f5f9"}; 
   return <span className="badge" style={{color:c.color,background:c.bg}}>{c.label}</span>;
@@ -1187,7 +1187,25 @@ export default function App() {
                 <div>
                   <div className="al ae mb4"><Ic n="alert" s={14} c="#dc2626"/><strong>CA Outstanding — SLA: maks 5 hari kerja setelah trip selesai.</strong></div>
                   <div className="card">
-                    <div className="ch"><h3>CA Belum Selesai</h3></div>
+                    <div className="ch">
+                      <h3>CA Belum Selesai</h3>
+                      <button className="btn bo sm" onClick={()=>{
+                        const rows = data.filter(d=>d.type==="cash_advance"&&!d.settled&&!["rejected"].includes(d.status));
+                        if (!rows.length) return alert("Tidak ada data CA outstanding.");
+                        const headers = ["ID","Pemohon","Departemen","Keperluan","Tujuan","Trip Selesai","Keterlambatan (hari)","Jumlah","Status"];
+                        const csvRows = rows.map(d=>{
+                          const late = Math.max(0, ddiff(d.dateEnd, today()) - 5);
+                          return [d.id, d.submitter, d.dept, d.purpose, d.destination, d.dateEnd, late > 0 ? `+${late}` : "Dalam batas", d.amount, STATUS[d.status]?.label||d.status];
+                        });
+                        const csv = [headers, ...csvRows].map(r => r.map(c => `"${String(c??'').replace(/"/g,'""')}"`).join(",")).join("\n");
+                        const blob = new Blob(["\uFEFF"+csv], {type:"text/csv;charset=utf-8;"});
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement("a"); a.href=url; a.download=`CA_Outstanding_${today()}.csv`; a.click();
+                        URL.revokeObjectURL(url);
+                      }}>
+                        ⬇️ Export Excel
+                      </button>
+                    </div>
                     <div className="tw"><table>
                       <thead><tr><th>ID</th><th>Pemohon</th><th>Keperluan</th><th>Trip Selesai</th><th>Keterlambatan</th><th>Jumlah</th><th>Status</th></tr></thead>
                       <tbody>{data.filter(d=>d.type==="cash_advance"&&!d.settled&&!["rejected"].includes(d.status)).map(d=>{
