@@ -978,6 +978,10 @@ function OerReconBox({ trx, rc, isFin, canEdit, isOwner, onAction }) {
   const [editMode, setEditMode] = useState(false); 
   const [items, setItems] = useState(trx.oerCategories?.length ? trx.oerCategories.map(c=>({cat:c.cat, amt:String(c.amt)})) : [{cat:"Perjalanan Dinas", amt:""}]);
   const [oerNote, setOerNote] = useState(trx.oerNote||""); 
+  
+  // State baru untuk input Estimasi Uang Masuk
+  const [estDate, setEstDate] = useState(today()); 
+
   const editTotal = items.reduce((s,it)=>s+(parseFloat(it.amt)||0),0);
   const editRc = editMode ? (() => { const sel = editTotal - trx.amount; return { ca:trx.amount, oer:editTotal, selisih:sel, isKurang:sel>0, isLebih:sel<0, isLunas:sel===0 }; })() : rc;
   
@@ -1031,6 +1035,7 @@ function OerReconBox({ trx, rc, isFin, canEdit, isOwner, onAction }) {
             <div style={{height:1,background:"var(--ln)",margin:"8px 0"}}/>
             <div style={{display:"flex",justifyContent:"space-between",fontSize:14,fontWeight:800,color:colV}}><span>{rc.isKurang?"Finance bayar kamu":rc.isLebih?"Kamu bayar perusahaan":"Pas"}</span><span>{rp(Math.abs(rc.selisih))}</span></div>
             
+            {/* 1. BLOK KARYAWAN LEBIH BAYAR (Karyawan mengembalikan sisa) */}
             {isOwner && trx.status === "lebih_bayar" && !trx.settled && (
               <div className="al aw mt3" style={{fontSize:12}}>
                 <div>
@@ -1047,6 +1052,7 @@ function OerReconBox({ trx, rc, isFin, canEdit, isOwner, onAction }) {
               </div>
             )}
 
+            {/* 2. BLOK FINANCE LEBIH BAYAR (Finance menagih sisa) */}
             {isFin && !trx.settled && trx.status === "lebih_bayar" && (
               <div className="mt3" style={{display:"flex", flexDirection:"column", gap:8}}>
                 <button className="btn bo sm" style={{width:"100%", borderColor:"#7c3aed", color:"#7c3aed", background:"#f3e8ff"}}
@@ -1064,32 +1070,19 @@ function OerReconBox({ trx, rc, isFin, canEdit, isOwner, onAction }) {
               </div>
             )}
 
-            {isFin && trx.status === "kurang_bayar" && (
-              <div className="mt3">
-                <button className="btn bp sm" style={{width:"100%"}}
-                  onClick={()=>{ onAction(trx.id,"awaiting_confirm"); if(isReady()) API.updateStatus(trx.id,{status:"awaiting_confirm"}).catch(()=>{}); }}>
-                  Kirim Konfirmasi ke Karyawan
-                </button>
-              </div>
-            )}
-            
-            {isOwner && trx.status === "awaiting_confirm" && rc.isKurang && (
-              <div className="mt3">
-                <button className="btn bg sm" style={{width:"100%"}}
-                  onClick={()=>{ onAction(trx.id,"employee_confirmed"); if(isReady()) API.updateStatus(trx.id,{status:"employee_confirmed"}).catch(()=>{}); }}>
-                  ✓ Setuju & Minta Transfer
-                </button>
-              </div>
-            )}
-
-            {isFin && !trx.settled && trx.status === "employee_confirmed" && rc.isKurang && (
-              <div className="mt3">
+            {/* 3. BLOK FINANCE KURANG BAYAR (Finance langsung transfer & Settle) */}
+            {isFin && !trx.settled && trx.status === "kurang_bayar" && (
+              <div className="mt3" style={{padding: "12px", background: "#ecfdf5", border: "1px solid #6ee7b7", borderRadius: "8px"}}>
+                <div style={{fontSize: 11, fontWeight: 800, color: "#065f46", textTransform: "uppercase", letterSpacing: ".05em", marginBottom: 8}}>Konfirmasi Transfer Kekurangan</div>
+                <label className="fl" style={{color: "#064e3b"}}>Estimasi Uang Masuk ke Karyawan</label>
+                <input type="date" value={estDate} onChange={e=>setEstDate(e.target.value)} style={{marginBottom: 10, borderColor: "#a7f3d0", background: "#fff", width: "100%"}}/>
                 <button className="btn sm" style={{width:"100%",background:"#059669",color:"white"}}
-                  onClick={()=>doSettle("Kekurangan sudah ditransfer ke karyawan")}>
+                  onClick={()=>doSettle(`Kekurangan sudah ditransfer ke karyawan. Estimasi masuk: ${estDate ? fd(estDate) : 'Segera'}`)}>
                   Selesaikan (Sudah Ditransfer)
                 </button>
               </div>
             )}
+
           </>
         )}
       </div>
