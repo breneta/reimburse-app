@@ -111,6 +111,10 @@ const isOverdue = (d) => {
 
 const withLateFlagOnly = (d) => ({ ...d, isLate: isOverdue(d) });
 
+// Nomor WhatsApp Finance — ganti sesuai nomor aktif (format internasional tanpa +)
+const FINANCE_WA = "6281234567890";
+const FINANCE_WA_NAME = "Finance PT. Roman Ceramics";
+
 // ── API ──────────────────────────────────────────────────────
 const SB = {
   async req(method, path, body=null, params=null) {
@@ -187,7 +191,13 @@ const API = {
     const sel = amt - ca; 
     const s = sel > 0 ? "kurang_bayar" : sel < 0 ? "lebih_bayar" : "settled";
     return SB.update(id, { oer_amount: amt, oer_categories: cats, oer_note: note||"", status: s });
-  }
+  },
+  editData: (id, updated) => SB.update(id, {
+    type: updated.type, purpose: updated.purpose, destination: updated.destination,
+    date_start: updated.dateStart, date_end: updated.dateEnd,
+    approver_name: updated.approverName, notes: updated.notes||"",
+    amount: updated.amount, categories: updated.categories,
+  }),
 };
 
 // ═══════════════════════════════════════════════════════════════
@@ -873,21 +883,20 @@ function EditForm({ trx, onSave, onCancel }) {
     dateStart:   trx.dateStart, dateEnd: trx.dateEnd, approverName:trx.approverName,
     notes:       trx.notes||"", items: trx.categories.map(c=>({cat:c.cat, amt:String(c.amt)})),
   });
-  const [busy,setBusy] = useState(false);
   const set  = (k,v) => setF(p=>({...p,[k]:v}));
   const si   = (i,k,v) => setF(p=>{const n=[...p.items];n[i]={...n[i],[k]:v};return{...p,items:n};});
   const total = f.items.reduce((a,it)=>a+(parseFloat(it.amt)||0),0);
 
   const save = async () => {
     if (!f.purpose||!f.dateStart||!f.dateEnd||!f.approverName||total===0){alert("Harap lengkapi semua field wajib.");return;}
-    setBusy(true);
     const updated = {
       ...trx, type: f.type, purpose: f.purpose, destination: f.destination, dateStart: f.dateStart, dateEnd: f.dateEnd,
       approverName:f.approverName, notes: f.notes, amount: total, categories: f.items.map(it=>({cat:it.cat, amt:parseFloat(it.amt)||0})),
     };
-    if (isReady()) await API.editData(trx.id, updated);
-    setBusy(false); 
+    // 1. Update UI immediately (optimistic)
     onSave(updated);
+    // 2. Sync ke Supabase di background — tidak await agar UI tidak freeze
+    if (isReady()) API.editData(trx.id, updated).catch(e=>console.error("Edit sync error:", e));
   };
 
   return (
@@ -928,8 +937,8 @@ function EditForm({ trx, onSave, onCancel }) {
         <div className="fs"><div className="fst">Catatan</div><textarea value={f.notes} onChange={e=>set("notes",e.target.value)} rows={2}/></div>
       </div>
       <div style={{display:"flex",justifyContent:"flex-end",gap:9}}>
-        <button className="btn bo" onClick={onCancel} disabled={busy}>Batal</button>
-        <button className="btn bp" onClick={save} disabled={busy}>{busy?"Menyimpan...":"Simpan"}</button>
+        <button className="btn bo" onClick={onCancel}>Batal</button>
+        <button className="btn bp" onClick={save}>Simpan</button>
       </div>
     </div>
   );
@@ -943,10 +952,16 @@ function OerReconBox({ trx, rc, isFin, isOwner, onAction }) {
   const editRc = editMode ? (() => { const sel = editTotal - trx.amount; return { ca:trx.amount, oer:editTotal, selisih:sel, isKurang:sel>0, isLebih:sel<0, isLunas:sel===0 }; })() : rc;
   
   const saveEdit = () => { 
-    const cats = items.filter(it=>parseFloat(it.amt)>0).map(it=>({cat:it.cat,amt:parseFloat(it.amt)})); 
-    onAction(trx.id, "edit_oer", {oerCategories:cats, oerNote, caAmount:trx.amount}); 
-    API.updateOer(trx.id, cats, oerNote, trx.amount); 
+    const cats = items.filter(it=>parseFloat(it.amt)>0).map(it=>({cat:it.cat,amt:parseFloat(it.amt)}));
+    const oerAmt = cats.reduce((s,it)=>s+it.amt,0);
+    onAction(trx.id, "edit_oer", {oerAmount:oerAmt, oerCategories:cats, oerNote, caAmount:trx.amount}); 
+    if (isReady()) API.updateOer(trx.id, cats, oerNote, trx.amount).catch(e=>console.error("OER edit err:",e));
     setEditMode(false); 
+  };
+
+  const doSettle = (note) => {
+    onAction(trx.id, "settle", note);
+    if (isReady()) API.updateStatus(trx.id, { status:"settled", settled:true, settled_date:today(), finance_note:note }).catch(e=>console.error("Settle err:",e));
   };
   
   const colV = editRc.isKurang?"#1e40af":editRc.isLebih?"#7c3aed":"#059669";
@@ -971,10 +986,45 @@ function OerReconBox({ trx, rc, isFin, isOwner, onAction }) {
             <div style={{height:1,background:"var(--ln)",margin:"8px 0"}}/>
             <div style={{display:"flex",justifyContent:"space-between",fontSize:14,fontWeight:800,color:colV}}><span>{rc.isKurang?"Finance bayar kamu":rc.isLebih?"Kamu bayar perusahaan":"Pas"}</span><span>{rp(Math.abs(rc.selisih))}</span></div>
             
-            {isOwner && !trx.settled && rc.isLebih && <div className="al aw mt3" style={{fontSize:11}}><strong>Instruksi:</strong> Transfer {rp(Math.abs(rc.selisih))} ke perusahaan dan kirim bukti via WhatsApp.</div>}
-            {isFin && !trx.settled && (trx.status==="lebih_bayar"||trx.status==="employee_confirmed") && <div className="mt3"><button className="btn bg sm" style={{width:"100%",background:rc.isLebih?"#7c3aed":"#059669"}} onClick={()=>onAction(trx.id,"settle",rc.isLebih?"Dana diterima via WA":"Sudah transfer ke karyawan")}>Konfirmasi & Selesaikan</button></div>}
-            {isFin && trx.status==="kurang_bayar" && <div className="mt3"><button className="btn bp sm" style={{width:"100%"}} onClick={()=>{onAction(trx.id,"awaiting_confirm"); API.updateStatus(trx.id,{status:"awaiting_confirm"});}}>Kirim Konfirmasi ke Karyawan</button></div>}
-            {isOwner && trx.status==="awaiting_confirm" && rc.isKurang && <div className="mt3"><button className="btn bg sm" style={{width:"100%"}} onClick={()=>{onAction(trx.id,"employee_confirmed"); API.updateStatus(trx.id,{status:"employee_confirmed"});}}>✓ Setuju & Konfirmasi</button></div>}
+            {isOwner && !trx.settled && rc.isLebih && (
+              <div className="al aw mt3" style={{fontSize:12}}>
+                <div>
+                  <p style={{fontWeight:800,marginBottom:6}}>⚠️ Sisa CA Perlu Dikembalikan: <strong>{rp(Math.abs(rc.selisih))}</strong></p>
+                  <p style={{marginBottom:4}}>1. Transfer <strong>{rp(Math.abs(rc.selisih))}</strong> ke rekening perusahaan</p>
+                  <p style={{marginBottom:4}}>2. Screenshot bukti transfer</p>
+                  <p style={{marginBottom:8}}>3. Kirim foto bukti ke WhatsApp Finance, sebutkan ID <strong>{trx.id}</strong></p>
+                  <a href={`https://wa.me/${FINANCE_WA}?text=${encodeURIComponent(`Halo, saya ${trx.submitter} mengirim bukti transfer pengembalian CA.\n\nID: ${trx.id}\nNominal: ${rp(Math.abs(rc.selisih))}\n\nTerlampir bukti transfer.`)}`}
+                    target="_blank" rel="noreferrer"
+                    style={{display:"inline-flex",alignItems:"center",gap:6,padding:"7px 12px",background:"#25D366",borderRadius:8,color:"white",fontWeight:800,fontSize:12,textDecoration:"none"}}>
+                    📲 Kirim via WhatsApp ke {FINANCE_WA_NAME}
+                  </a>
+                </div>
+              </div>
+            )}
+            {isFin && !trx.settled && (trx.status==="lebih_bayar"||trx.status==="employee_confirmed") && (
+              <div className="mt3">
+                <button className="btn sm" style={{width:"100%",background:rc.isLebih?"#7c3aed":"#059669",color:"white"}}
+                  onClick={()=>doSettle(rc.isLebih?"Dana diterima via WA":"Sudah transfer ke karyawan")}>
+                  Konfirmasi & Selesaikan
+                </button>
+              </div>
+            )}
+            {isFin && trx.status==="kurang_bayar" && (
+              <div className="mt3">
+                <button className="btn bp sm" style={{width:"100%"}}
+                  onClick={()=>{ onAction(trx.id,"awaiting_confirm"); if(isReady()) API.updateStatus(trx.id,{status:"awaiting_confirm"}).catch(()=>{}); }}>
+                  Kirim Konfirmasi ke Karyawan
+                </button>
+              </div>
+            )}
+            {isOwner && trx.status==="awaiting_confirm" && rc.isKurang && (
+              <div className="mt3">
+                <button className="btn bg sm" style={{width:"100%"}}
+                  onClick={()=>{ onAction(trx.id,"employee_confirmed"); if(isReady()) API.updateStatus(trx.id,{status:"employee_confirmed"}).catch(()=>{}); }}>
+                  ✓ Setuju & Konfirmasi
+                </button>
+              </div>
+            )}
           </>
         )}
       </div>
@@ -992,12 +1042,13 @@ function DetailModal({ trx, user, onClose, onAction, onEdit }) {
   const [editing,setEditing] = useState(false);
   
   const isFin = user.role==="finance"; 
-  const isGA = user.role==="ga"; // ✅ Ditambahkan: GA sekarang dikenali
+  const isGA = user.role==="ga";
+  const isAdminLK = user.role==="admin_lk";
+  const isAdminJKT = user.role==="admin_jkt";
   const isOwner = user.role==="employee" && (trx.submitterUsername===user.username || trx.submitter===user.name);
   
-  const LOCKED_STATUSES = ["paid","rejected","settled","awaiting_oer","oer_doc_pending","oer_doc_received","oer_doc_complete","kurang_bayar","lebih_bayar","awaiting_confirm","employee_confirmed","disputed"];
-  // ✅ Ditambahkan: GA sekarang punya hak akses Edit
-  const canEdit = isFin || isGA || (isOwner && !LOCKED_STATUSES.includes(trx.status));
+  // Hanya Admin LK, Admin JKT, GA, Finance yang boleh edit
+  const canEdit = isFin || isGA || isAdminLK || isAdminJKT;
   
   const rc = recon(trx);
   
@@ -1027,11 +1078,16 @@ function DetailModal({ trx, user, onClose, onAction, onEdit }) {
     {ok:trx.status==="paid"||trx.settled, icon:"check", title:"Pembayaran Selesai", sub:(trx.status==="paid"||trx.settled)?`Lunas ${fd(trx.settledDate)}`:"", col:"var(--gn)"}
   ];
 
-  const act = (a, n, d) => { 
-    setBusy(true); 
-    onAction(trx.id, a, n, trx.type, d); 
-    const s = a==="pay" ? (trx.type==="cash_advance"?"awaiting_oer":"paid") : "processing"; 
-    API.updateStatus(trx.id, {status:s, finance_note:n, transfer_date:d, settled_date:today()}).finally(()=>setBusy(false)); 
+  const act = async (a, n, d) => { 
+    setBusy(true);
+    try {
+      onAction(trx.id, a, n, trx.type, d);
+      const newStatus = a==="pay" ? (trx.type==="cash_advance" ? "awaiting_oer" : "paid")
+                      : a==="process" ? "processing"
+                      : a==="approve" ? "approved"
+                      : a;
+      await API.updateStatus(trx.id, { status: newStatus, finance_note: n||"", transfer_date: d||"", settled_date: today() });
+    } finally { setBusy(false); }
   };
 
   return (
@@ -1083,14 +1139,16 @@ export default function App() {
   const handleAction = (id, a, n, t, d) => {
     setData(prev=>prev.map(trx=>{
       if (trx.id!==id) return trx;
-      if (a==="settle") return { ...trx, status:"settled", settled:true, settledDate:today(), financeNote:n };
-      if (a==="edit_oer") return { ...trx, oerAmount:n.oerAmount, oerCategories:n.oerCategories, oerNote:n.oerNote, status:((n.oerAmount-n.caAmount)>0?"kurang_bayar":(n.oerAmount-n.caAmount)<0?"lebih_bayar":"settled") };
-      if (a==="pay") return { ...trx, status:(t==="cash_advance"?"awaiting_oer":"paid"), settledDate:today(), transferDate:d };
+      if (a==="settle") return { ...trx, status:"settled", settled:true, settledDate:today(), financeNote:n||trx.financeNote };
+      if (a==="edit_oer") { const sel=(n.oerAmount||0)-(n.caAmount||trx.amount); return { ...trx, oerAmount:n.oerAmount, oerCategories:n.oerCategories, oerNote:n.oerNote||trx.oerNote, status:sel>0?"kurang_bayar":sel<0?"lebih_bayar":"settled", settled:sel===0 }; }
+      if (a==="pay") return { ...trx, status:(t==="cash_advance"?"awaiting_oer":"paid"), settledDate:today(), transferDate:d||"" };
       if (a==="oer_submitted") return { ...trx, ...n, status:"oer_doc_pending" };
+      if (a==="edit") return { ...trx, ...n };
       const m = {approve:"approved",process:"processing",doc_received_lk:"doc_received_lk",doc_sent_jkt:"doc_sent_jkt",doc_received_jkt:"doc_received_jkt",doc_complete:"doc_complete",oer_doc_received:"oer_doc_received",oer_doc_complete:"oer_doc_complete",awaiting_confirm:"awaiting_confirm",employee_confirmed:"employee_confirmed"};
-      return { ...trx, status: m[a]||a, financeNote:n||trx.financeNote };
+      return { ...trx, status: m[a]||trx.status, financeNote:n||trx.financeNote };
     }));
-    setToast({msg:"✓ Berhasil diupdate"}); setTimeout(()=>setToast(null),2500); if(a==="settle")setSelId(null);
+    setToast({msg:"✓ Berhasil"}); setTimeout(()=>setToast(null),2500);
+    if (a==="settle") setSelId(null);
   };
 
   if (!user) return (<><style>{CSS}</style><LoginScreen onLogin={handleLogin}/></>);
@@ -1155,7 +1213,7 @@ export default function App() {
         </div>
       </div>
     </div>
-    {sel && <DetailModal trx={sel} user={user} onClose={()=>setSelId(null)} onAction={handleAction} onEdit={updated=>setData(prev=>prev.map(d=>d.id===updated.id?updated:d))}/>}
+    {sel && <DetailModal trx={sel} user={user} onClose={()=>setSelId(null)} onAction={handleAction} onEdit={updated=>{setData(prev=>prev.map(d=>d.id===updated.id?withLateFlagOnly(updated):d)); setToast({msg:"✓ Pengajuan berhasil diperbarui"}); setTimeout(()=>setToast(null),2500);}}/>}
     {toast && <div className="toast" style={{background:"var(--ink)"}}>{toast.msg}</div>}</>
   );
 }
