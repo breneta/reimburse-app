@@ -931,9 +931,9 @@ function EditForm({ trx, onSave, onCancel }) {
   );
 }
 
-function OerReconBox({ trx, rc, isFin, isOwner, onAction }) {
+function OerReconBox({ trx, rc, isFin, canEdit, isOwner, onAction }) {
   const [editMode, setEditMode] = useState(false); 
-  const [items, setItems] = useState(OER_CATS.map(cat => ({ cat, amt: (trx.oerCategories||[]).find(x=>x.cat===cat) ? String((trx.oerCategories||[]).find(x=>x.cat===cat).amt) : "" })));
+  const [items, setItems] = useState(trx.oerCategories?.length ? trx.oerCategories.map(c=>({cat:c.cat, amt:String(c.amt)})) : [{cat:"Perjalanan Dinas", amt:""}]);
   const [oerNote, setOerNote] = useState(trx.oerNote||""); 
   const editTotal = items.reduce((s,it)=>s+(parseFloat(it.amt)||0),0);
   const editRc = editMode ? (() => { const sel = editTotal - trx.amount; return { ca:trx.amount, oer:editTotal, selisih:sel, isKurang:sel>0, isLebih:sel<0, isLunas:sel===0 }; })() : rc;
@@ -957,13 +957,28 @@ function OerReconBox({ trx, rc, isFin, isOwner, onAction }) {
     <div style={{marginBottom:16,border:`2px solid ${editRc.isLebih?"#c4b5fd":"#93c5fd"}`,borderRadius:10,overflow:"hidden"}}>
       <div style={{padding:"9px 14px",background:editRc.isLebih?"#ede9fe":"#dbeafe",fontWeight:800,fontSize:12,display:"flex",justifyContent:"space-between"}}>
         <span>📊 Rekonsiliasi</span>
-        {isFin && !trx.settled && <button className="btn bo sm" onClick={()=>setEditMode(!editMode)}>{editMode?"Batal":"Edit"}</button>}
+        {canEdit && !trx.settled && <button className="btn bo sm" onClick={()=>setEditMode(!editMode)}>{editMode?"Batal":"Edit"}</button>}
       </div>
       <div style={{padding:14}}>
         {editMode ? (
           <>
-            {items.map((it,i)=>(<div key={i} style={{display:"flex",justifyContent:"space-between",marginBottom:6}}><span style={{fontSize:12}}>{it.cat}</span><input type="number" value={it.amt} onChange={e=>{const n=[...items];n[i].amt=e.target.value;setItems(n);}} style={{width:100,textAlign:"right"}}/></div>))}
-            <textarea value={oerNote} onChange={e=>setOerNote(e.target.value)} placeholder="Catatan koreksi..." rows={2} style={{marginTop:8,width:"100%"}}/>
+            {items.map((it,i)=>(
+              <div key={i} style={{display:"flex",gap:9,alignItems:"flex-end",marginBottom:8}}>
+                <div style={{flex:2}}>
+                  {i===0&&<label className="fl">Kategori</label>}
+                  <select value={it.cat} onChange={e=>{const n=[...items];n[i].cat=e.target.value;setItems(n);}}>
+                    {CATS.map(c=><option key={c}>{c}</option>)}
+                  </select>
+                </div>
+                <div style={{flex:1.5}}>
+                  {i===0&&<label className="fl">Nominal (Rp)</label>}
+                  <input type="number" value={it.amt} onChange={e=>{const n=[...items];n[i].amt=e.target.value;setItems(n);}} placeholder="0" min="0" style={{width:"100%"}}/>
+                </div>
+                {items.length>1&&<button className="btn bo xs" style={{marginBottom:3}} onClick={()=>setItems(items.filter((_,j)=>j!==i))}><Ic n="trash" s={12}/></button>}
+              </div>
+            ))}
+            <button className="btn bo sm mb3" onClick={()=>setItems([...items,{cat:"Perjalanan Dinas",amt:""}])}>+ Item</button>
+            <textarea value={oerNote} onChange={e=>setOerNote(e.target.value)} placeholder="Catatan koreksi admin..." rows={2} style={{marginTop:8,width:"100%"}}/>
             <div style={{textAlign:"right"}}><button className="btn bg mt2" onClick={saveEdit}>Simpan</button></div>
           </>
         ) : (
@@ -1028,13 +1043,17 @@ function DetailModal({ trx, user, onClose, onAction, onEdit }) {
   const [busy,setBusy] = useState(false);
   const [editing,setEditing] = useState(false);
   
+  // State untuk form input OER
+  const [showOerForm, setShowOerForm] = useState(false);
+  const [oerItems, setOerItems] = useState([{cat:"Perjalanan Dinas", amt:""}]);
+  
   const isFin = user.role==="finance"; 
   const isGA = user.role==="ga";
   const isAdminLK = user.role==="admin_lk";
   const isAdminJKT = user.role==="admin_jkt";
   const isOwner = user.role==="employee" && (trx.submitterUsername===user.username || trx.submitter===user.name);
   
-  // Hanya Admin LK, Admin JKT, GA, Finance yang boleh edit
+  // Semua Admin / Finance / GA berhak edit form OER (maupun form awal)
   const canEdit = isFin || isGA || isAdminLK || isAdminJKT;
   
   const rc = recon(trx);
@@ -1083,22 +1102,67 @@ function DetailModal({ trx, user, onClose, onAction, onEdit }) {
         <div className="mh">
           <div><span className="mono">{trx.id}</span><h2 style={{fontSize:15,fontWeight:800}}>{trx.purpose}</h2></div>
           <div style={{display:"flex",gap:6,alignItems:"center"}}>
-            {canEdit && !editing && <button className="btn bo sm" onClick={()=>setEditing(true)}>✏️ Edit</button>}
+            {canEdit && !editing && <button className="btn bo sm" onClick={()=>setEditing(true)}>✏️ Edit Awal</button>}
             {editing && <span style={{fontSize:11,fontWeight:700,color:"var(--am)",background:"var(--amb)",padding:"3px 9px",borderRadius:20}}>Mode Edit</span>}
             <button className="btn bo sm" onClick={onClose}>✕</button>
           </div>
         </div>
         <div className="mb2">
-          {/* ✅ onEdit sekarang berfungsi karena sudah ditambahkan ke Props di atas */}
           {editing ? <EditForm trx={trx} onSave={updated=>{setEditing(false);onEdit(updated);}} onCancel={()=>setEditing(false)}/> : <>
             <div style={{display:"flex",gap:7,alignItems:"center",padding:10,background:"var(--ln2)",borderRadius:10,marginBottom:16}}><TTag t={trx.type}/><SBadge s={trx.status} trx={trx} isOwner={isOwner}/><LateBadge d={trx}/></div>
             <div className="g2 mb4"><div><p className="sl">Pemohon</p><p className="bold">{trx.submitter}</p><p style={{fontSize:12}}>{trx.dept}</p></div><div><p className="sl">Perjalanan</p><p className="bold">{trx.destination}</p><p style={{fontSize:12}}>{fd(trx.dateStart)} – {fd(trx.dateEnd)}</p></div></div>
-            <div className="fs mb4"><div className="fst">Rincian</div>{trx.categories.map((c,i)=>(<div key={i} style={{display:"flex",justifyContent:"space-between",fontSize:13,padding:"4px 0"}}><span>{c.cat}</span><span className="bold">{rp(c.amt)}</span></div>))}<div style={{display:"flex",justifyContent:"space-between",marginTop:8,paddingTop:8,borderTop:"2px solid var(--tl)"}}><span className="bold">TOTAL</span><span className="bold" style={{fontSize:16}}>{rp(trx.amount)}</span></div></div>
-            {trx.type==="cash_advance" && rc && <OerReconBox trx={trx} rc={rc} isFin={isFin} isOwner={isOwner} onAction={onAction}/>}
+            <div className="fs mb4"><div className="fst">Rincian CA / Reimburse</div>{trx.categories.map((c,i)=>(<div key={i} style={{display:"flex",justifyContent:"space-between",fontSize:13,padding:"4px 0"}}><span>{c.cat}</span><span className="bold">{rp(c.amt)}</span></div>))}<div style={{display:"flex",justifyContent:"space-between",marginTop:8,paddingTop:8,borderTop:"2px solid var(--tl)"}}><span className="bold">TOTAL</span><span className="bold" style={{fontSize:16}}>{rp(trx.amount)}</span></div></div>
+            
+            {/* OerReconBox sudah dipanggil dengan canEdit */}
+            {trx.type==="cash_advance" && rc && <OerReconBox trx={trx} rc={rc} isFin={isFin} canEdit={canEdit} isOwner={isOwner} onAction={onAction}/>}
+            
             <p className="sl mb3">Progress</p><div>{tl.map((t,i)=>(<div key={i} className="tlr"><div className="tldc"><div className="tld" style={{background:t.ok?t.col:"var(--ln)"}}><Ic n={t.icon} s={12} c={t.ok?"#fff":"var(--i4)"}/></div>{i<tl.length-1&&<div className="tlln"/>}</div><div className="tlb"><div className="tlt" style={{color:t.ok?"var(--ink)":"var(--i4)"}}>{t.title}</div><div className="tls">{t.sub}</div></div></div>))}</div>
+            
             {isFin && ["approved","doc_complete"].includes(trx.status) && <div className="mt4 fs"><div className="fst">Mulai Proses</div><textarea value={note} onChange={e=>setNote(e.target.value)} placeholder="Catatan..." rows={2}/><button className="btn bp mt2" onClick={()=>act("process",note)} disabled={busy}>{busy?"Loading...":"Proses"}</button></div>}
             {isFin && trx.status==="processing" && <div className="mt4 fs"><div className="fst">Konfirmasi Bayar</div><p style={{fontSize:12,marginBottom:8}}>Transfer ke: <strong>{trx.submitter}</strong></p><label className="fl">Tgl Masuk Rekening (Opsional)</label><input type="date" value={tDate} onChange={e=>setTDate(e.target.value)}/><button className="btn bg mt2" onClick={()=>act("pay",note,tDate)} disabled={busy}>{busy?"Loading...":"Tandai Dibayar"}</button></div>}
-            {isOwner && trx.type==="cash_advance" && ["paid","awaiting_oer"].includes(trx.status) && !trx.oerAmount && <div className="mt4 fs"><div className="fst">Submit OER</div><p style={{fontSize:12,marginBottom:8}}>Trip selesai. Masukkan rincian pengeluaran aktual untuk rekonsiliasi.</p><button className="btn bp sm" onClick={()=>{const n = prompt("Total pengeluaran (Rp)? (Hanya angka)"); if(n){const d={oerAmount:parseFloat(n),oerCategories:[{cat:"Lain-lain",amt:parseFloat(n)}],oerDate:today()}; onAction(trx.id,"oer_submitted",d); API.submitOer(trx.id,d);}}} disabled={busy}>Isi OER (Cepat)</button></div>}
+            
+            {/* --- UPDATE: Form Submit OER sekarang bisa diakses isOwner ATAU Staff (canEdit) --- */}
+            {(isOwner || canEdit) && trx.type==="cash_advance" && ["paid","awaiting_oer"].includes(trx.status) && !trx.oerAmount && (
+              <div className="mt4 fs">
+                <div className="fst">Submit OER (Settlement CA)</div>
+                <p style={{fontSize:12,marginBottom:8}}>
+                  {isOwner ? "Trip selesai. Masukkan rincian pengeluaran aktual untuk rekonsiliasi." : "Bantu input OER untuk Karyawan (diisi oleh Admin/GA/Finance)."}
+                </p>
+                {showOerForm ? (
+                  <>
+                    {oerItems.map((it,i)=>(
+                      <div key={i} style={{display:"flex",gap:9,alignItems:"flex-end",marginBottom:8}}>
+                        <div style={{flex:2}}>
+                          {i===0&&<label className="fl">Kategori</label>}
+                          <select value={it.cat} onChange={e=>{const n=[...oerItems];n[i].cat=e.target.value;setOerItems(n);}}>
+                            {CATS.map(c=><option key={c}>{c}</option>)}
+                          </select>
+                        </div>
+                        <div style={{flex:1.5}}>
+                          {i===0&&<label className="fl">Nominal (Rp)</label>}
+                          <input type="number" value={it.amt} onChange={e=>{const n=[...oerItems];n[i].amt=e.target.value;setOerItems(n);}} placeholder="0" min="0"/>
+                        </div>
+                        {oerItems.length>1&&<button className="btn bo xs" style={{marginBottom:3}} onClick={()=>setOerItems(oerItems.filter((_,j)=>j!==i))}><Ic n="trash" s={12}/></button>}
+                      </div>
+                    ))}
+                    <button className="btn bo sm mb3" onClick={()=>setOerItems([...oerItems,{cat:"Perjalanan Dinas",amt:""}])}>+ Item</button>
+                    <div style={{display:"flex",justifyContent:"flex-end",gap:8}}>
+                      <button className="btn bo" onClick={()=>setShowOerForm(false)}>Batal</button>
+                      <button className="btn bp" disabled={busy} onClick={()=>{
+                        const total = oerItems.reduce((a,b)=>a+(parseFloat(b.amt)||0),0);
+                        if(total===0) return alert("Total pengeluaran tidak boleh 0");
+                        const cats = oerItems.map(it=>({cat:it.cat,amt:parseFloat(it.amt)||0}));
+                        const d = { oerAmount:total, oerCategories:cats, oerDate:today() };
+                        onAction(trx.id, "oer_submitted", d);
+                        if(isReady()) API.submitOer(trx.id, d);
+                      }}>Kirim OER</button>
+                    </div>
+                  </>
+                ) : (
+                  <button className="btn bp sm" onClick={()=>setShowOerForm(true)}>Isi Form OER</button>
+                )}
+              </div>
+            )}
           </>}
         </div>
       </div>
