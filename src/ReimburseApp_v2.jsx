@@ -982,13 +982,23 @@ function OerReconBox({ trx, rc, isFin, isOwner, onAction }) {
   );
 }
 
+// ═══════════════════════════════════════════════════════════════
+// DETAIL MODAL
+// ═══════════════════════════════════════════════════════════════
 function DetailModal({ trx, user, onClose, onAction, onEdit }) {
   const [note,setNote] = useState(""); 
   const [tDate,setTDate] = useState(trx.transferDate||""); 
   const [busy,setBusy] = useState(false);
   const [editing,setEditing] = useState(false);
+  
   const isFin = user.role==="finance"; 
+  const isGA = user.role==="ga"; // ✅ Ditambahkan: GA sekarang dikenali
   const isOwner = user.role==="employee" && (trx.submitterUsername===user.username || trx.submitter===user.name);
+  
+  const LOCKED_STATUSES = ["paid","rejected","settled","awaiting_oer","oer_doc_pending","oer_doc_received","oer_doc_complete","kurang_bayar","lebih_bayar","awaiting_confirm","employee_confirmed","disputed"];
+  // ✅ Ditambahkan: GA sekarang punya hak akses Edit
+  const canEdit = isFin || isGA || (isOwner && !LOCKED_STATUSES.includes(trx.status));
+  
   const rc = recon(trx);
   
   const OER_STATUSES = ["awaiting_oer","oer_doc_pending","oer_doc_received","oer_doc_complete","kurang_bayar","lebih_bayar","awaiting_confirm","employee_confirmed","settled"];
@@ -1030,11 +1040,13 @@ function DetailModal({ trx, user, onClose, onAction, onEdit }) {
         <div className="mh">
           <div><span className="mono">{trx.id}</span><h2 style={{fontSize:15,fontWeight:800}}>{trx.purpose}</h2></div>
           <div style={{display:"flex",gap:6,alignItems:"center"}}>
-            {(isFin||isOwner)&&!editing&&<button className="btn bo sm" onClick={()=>setEditing(true)}>✏️ Edit</button>}
+            {canEdit && !editing && <button className="btn bo sm" onClick={()=>setEditing(true)}>✏️ Edit</button>}
+            {editing && <span style={{fontSize:11,fontWeight:700,color:"var(--am)",background:"var(--amb)",padding:"3px 9px",borderRadius:20}}>Mode Edit</span>}
             <button className="btn bo sm" onClick={onClose}>✕</button>
           </div>
         </div>
         <div className="mb2">
+          {/* ✅ onEdit sekarang berfungsi karena sudah ditambahkan ke Props di atas */}
           {editing ? <EditForm trx={trx} onSave={updated=>{setEditing(false);onEdit(updated);}} onCancel={()=>setEditing(false)}/> : <>
             <div style={{display:"flex",gap:7,alignItems:"center",padding:10,background:"var(--ln2)",borderRadius:10,marginBottom:16}}><TTag t={trx.type}/><SBadge s={trx.status} trx={trx} isOwner={isOwner}/><LateBadge d={trx}/></div>
             <div className="g2 mb4"><div><p className="sl">Pemohon</p><p className="bold">{trx.submitter}</p><p style={{fontSize:12}}>{trx.dept}</p></div><div><p className="sl">Perjalanan</p><p className="bold">{trx.destination}</p><p style={{fontSize:12}}>{fd(trx.dateStart)} – {fd(trx.dateEnd)}</p></div></div>
@@ -1050,7 +1062,6 @@ function DetailModal({ trx, user, onClose, onAction, onEdit }) {
     </div>
   );
 }
-
 // ═══════════════════════════════════════════════════════════════
 // MAIN APP
 // ═══════════════════════════════════════════════════════════════
