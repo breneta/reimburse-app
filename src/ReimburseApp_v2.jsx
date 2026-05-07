@@ -326,8 +326,8 @@ const Ic = ({ n, s=16, c="currentColor" }) => (<svg width={s} height={s} fill="n
 
 const SBadge = ({ s, trx, isOwner }) => {
   let ds = s;
-  if (trx && trx.transferDate && (s==="paid"||s==="awaiting_oer")) {
-    // Bandingkan tanggal saja (string YYYY-MM-DD) agar bebas timezone
+  if (trx && trx.transferDate && (s==="paid"||s==="awaiting_oer") && !trx.settledDate) {
+    // Hanya tampilkan "Dalam Antrian" kalau belum benar-benar lunas
     const todayStr = today();
     if (trx.transferDate >= todayStr) ds = "paid_queued";
   }
