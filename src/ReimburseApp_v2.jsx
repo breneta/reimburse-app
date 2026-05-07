@@ -98,7 +98,7 @@ const isOverdue = (d) => {
 const withLateFlagOnly = (d) => ({ ...d, isLate: isOverdue(d) });
 
 // Nomor WhatsApp Finance — ganti sesuai nomor aktif (format internasional tanpa +)
-const FINANCE_WA = "6281234567890";
+const FINANCE_WA = "6285921551618";
 const FINANCE_WA_NAME = "Finance PT. Roman Ceramics";
 
 // ── API ──────────────────────────────────────────────────────
@@ -992,7 +992,7 @@ function OerReconBox({ trx, rc, isFin, canEdit, isOwner, onAction }) {
               <div className="al aw mt3" style={{fontSize:12}}>
                 <div>
                   <p style={{fontWeight:800,marginBottom:6}}>⚠️ Sisa CA Perlu Dikembalikan: <strong>{rp(Math.abs(rc.selisih))}</strong></p>
-                  <p style={{marginBottom:4}}>1. Transfer <strong>{rp(Math.abs(rc.selisih))}</strong> ke rekening perusahaan</p>
+                  <p style={{marginBottom:4}}>1. Transfer <strong>{rp(Math.abs(rc.selisih))}</strong> ke rekening perusahaan <strong>(4899889999)</strong></p>
                   <p style={{marginBottom:4}}>2. Screenshot bukti transfer</p>
                   <p style={{marginBottom:8}}>3. Kirim foto bukti ke WhatsApp Finance, sebutkan ID <strong>{trx.id}</strong></p>
                   <a href={`https://wa.me/${FINANCE_WA}?text=${encodeURIComponent(`Halo, saya ${trx.submitter} mengirim bukti transfer pengembalian CA.\n\nID: ${trx.id}\nNominal: ${rp(Math.abs(rc.selisih))}\n\nTerlampir bukti transfer.`)}`}
