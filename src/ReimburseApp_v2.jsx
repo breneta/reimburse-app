@@ -24,7 +24,7 @@ const isReady = () => CONFIG.SUPABASE_URL && CONFIG.SUPABASE_KEY;
 const DEPTS = ["Sales","Commercial","HRD","Marketing","GA","IT","Finance","Lainnya"];
 const AREAS = ["Jakarta","Surabaya","Semarang","Medan","Yogyakarta","Denpasar","Bandung","Palembang"];
 const CATS  = ["Perjalanan Dinas","Akomodasi / Hotel","Makan","Entertainment","Transportasi","Uang Saku","Komunikasi","Lain-lain"];
-const OER_CATS = ["Plane Fare","Akomodasi / Hotel","Car Rental / Bensin / Tol","Taxi / Bus / Kereta","Telepon / Komunikasi","Makan (dengan tamu)","Meal Allowance","Uang Saku","Airport Tax","Lain-lain"];
+
 
 const DEMO = [];
 
