@@ -27,7 +27,6 @@ const CATS  = ["Perjalanan Dinas","Akomodasi / Hotel","Makan","Entertainment","T
 const OER_CATS = ["Plane Fare","Akomodasi / Hotel","Car Rental / Bensin / Tol","Taxi / Bus / Kereta","Telepon / Komunikasi","Makan (dengan tamu)","Meal Allowance","Uang Saku","Airport Tax","Lain-lain"];
 
 const DEMO = [];
-const ddiff = (a,b) => Math.round((new Date(b)-new Date(a))/864e5);
 
 const STATUS = {
   pending:           { label:"Menunggu Approval",      color:"#92400e", bg:"#fffbeb", dot:"#f59e0b" },
