@@ -1,3 +1,4 @@
+/* eslint-disable */
 import { useState, useEffect } from "react";
 
 // ═══════════════════════════════════════════════════════════════
@@ -47,6 +48,7 @@ const STATUS = {
   lebih_bayar:       { label:"Lebih Bayar ↓",           color:"#4c1d95", bg:"#ede9fe", dot:"#8b5cf6" },
   awaiting_confirm:  { label:"Menunggu Konfirmasi",     color:"#92400e", bg:"#fff7ed", dot:"#f97316" },
   employee_confirmed:{ label:"Karyawan Setuju ✓",       color:"#065f46", bg:"#ecfdf5", dot:"#10b981" },
+  disputed:          { label:"Keberatan",               color:"#991b1b", bg:"#fef2f2", dot:"#ef4444" },
   settled:           { label:"Lunas ✓",                 color:"#065f46", bg:"#ecfdf5", dot:"#10b981" },
   rejected:          { label:"Ditolak",                 color:"#991b1b", bg:"#fef2f2", dot:"#ef4444" },
 };
@@ -512,13 +514,20 @@ function GAQueue({ data, onAction, onSel }) {
   const oerQueue = data.filter(d => d.status === "oer_doc_received");
   return (
     <div>
-      <div className="card mb3"><div className="ch"><h3>Antrian GA</h3></div><div className="tw"><table><thead><tr><th>ID</th><th>Pemohon</th><th>Keperluan</th><th>Tujuan & Tanggal</th><th>Aksi</th></tr></thead><tbody>{queue.map(d=>(<tr key={d.id} onClick={()=>onSel(d.id)}><td><span className="mono">{d.id}</span></td><td><div className="bold">{d.submitter}</div></td><td>{d.purpose}</td><td><div className="bold">{d.destination}</div><div style={{fontSize:11}}>{fd(d.dateStart)} - {fd(d.dateEnd)}</div></td><td><button className="btn bg xs" onClick={e=>{e.stopPropagation(); onAction(d.id,"doc_complete",gaNote); API.docComplete(d.id,null,gaNote);}}>✓ Lengkap</button></td></tr>))}</tbody></table></div></div>
+      <div className="card mb3">
+        <div className="ch" style={{flexWrap:"wrap"}}>
+          <h3>Antrian GA</h3>
+          <div style={{display:"flex",gap:8,alignItems:"center"}}>
+            <input value={gaNote} onChange={e=>setGaNote(e.target.value)} placeholder="Catatan approval..." style={{width:200,fontSize:12,padding:"6px 10px"}}/>
+          </div>
+        </div>
+        <div className="tw"><table><thead><tr><th>ID</th><th>Pemohon</th><th>Keperluan</th><th>Tujuan & Tanggal</th><th>Aksi</th></tr></thead><tbody>{queue.map(d=>(<tr key={d.id} onClick={()=>onSel(d.id)}><td><span className="mono">{d.id}</span></td><td><div className="bold">{d.submitter}</div></td><td>{d.purpose}</td><td><div className="bold">{d.destination}</div><div style={{fontSize:11}}>{fd(d.dateStart)} - {fd(d.dateEnd)}</div></td><td><button className="btn bg xs" onClick={e=>{e.stopPropagation(); onAction(d.id,"doc_complete",gaNote); API.docComplete(d.id,null,gaNote);}}>✓ Lengkap</button></td></tr>))}</tbody></table></div></div>
       {oerQueue.length>0 && <div className="card"><div className="ch"><h3 style={{color:"#7c3aed"}}>OER Dokumen — Perlu Approve</h3></div><div className="tw"><table><thead><tr><th>ID</th><th>Pemohon</th><th>Keperluan</th><th>Tujuan & Tanggal</th><th>Selisih</th><th>Aksi</th></tr></thead><tbody>{oerQueue.map(d=>{const sel = (d.oerAmount||0)-d.amount; return(<tr key={d.id} onClick={()=>onSel(d.id)}><td><span className="mono">{d.id}</span></td><td>{d.submitter}</td><td>{d.purpose}</td><td>{d.destination}</td><td className="bold" style={{color:sel<0?"#7c3aed":"#059669"}}>{sel<0?`Lebih ${rp(Math.abs(sel))}`:sel>0?`Kurang ${rp(sel)}`:"Pas"}</td><td><button className="btn bg xs" style={{background:"#7c3aed"}} onClick={e=>{e.stopPropagation(); onAction(d.id,"oer_doc_complete",gaNote); API.oerDocComplete(d.id,gaNote,d.amount,d.oerAmount);}}>Approve OER</button></td></tr>);})}</tbody></table></div></div>}
     </div>
   );
 }
 
-function MonitorPage({ data, onSel, onAction }) {
+function MonitorPage({ data, onSel }) {
   const overdue = data.filter(d=>d.isLate===true);
   const actionable = data.filter(d=>["doc_complete","approved","processing","kurang_bayar","lebih_bayar","employee_confirmed"].includes(d.status) && !d.settled);
   const caOut = data.filter(d=>d.type==="cash_advance" && !d.settled && !["rejected"].includes(d.status));
@@ -539,7 +548,7 @@ function SettingsPage({ onSave }) {
   );
 }
 
-function EditForm({ trx, user, onSave, onCancel }) {
+function EditForm({ trx, onSave, onCancel }) {
   const [f,setF] = useState({
     type:        trx.type, purpose: trx.purpose, destination: trx.destination,
     dateStart:   trx.dateStart, dateEnd: trx.dateEnd, approverName:trx.approverName,
@@ -547,7 +556,7 @@ function EditForm({ trx, user, onSave, onCancel }) {
   });
   const [busy,setBusy] = useState(false);
   const set  = (k,v) => setF(p=>({...p,[k]:v}));
-  const si   = (i,k,v) => setF(p=>{const it=[...p.items];it[i]={...it[i],[k]:v};return{...p,items:it};});
+  const si   = (i,k,v) => setF(p=>{const n=[...p.items];n[i]={...n[i],[k]:v};return{...p,items:n};});
   const total = f.items.reduce((a,it)=>a+(parseFloat(it.amt)||0),0);
 
   const save = async () => {
@@ -619,7 +628,7 @@ function OerReconBox({ trx, rc, isFin, isOwner, onAction }) {
       <div style={{padding:"9px 14px",background:editRc.isLebih?"#ede9fe":"#dbeafe",fontWeight:800,fontSize:12,display:"flex",justifyContent:"space-between"}}><span>📊 Rekonsiliasi</span>{isFin && !trx.settled && <button className="btn bo sm" onClick={()=>setEditMode(!editMode)}>{editMode?"Batal":"Edit"}</button>}</div>
       <div style={{padding:14}}>
         {editMode ? (
-          <>{items.map((it,i)=>(<div key={i} style={{display:"flex",justifyContent:"space-between",marginBottom:6}}><span style={{fontSize:12}}>{it.cat}</span><input type="number" value={it.amt} onChange={e=>{const n=[...items];n[i].amt=e.target.value;setItems(n);}} style={{width:100,textAlign:"right"}}/></div>))}<div style={{textAlign:"right"}}><button className="btn bg mt2" onClick={saveEdit}>Simpan</button></div></>
+          <>{items.map((it,i)=>(<div key={i} style={{display:"flex",justifyContent:"space-between",marginBottom:6}}><span style={{fontSize:12}}>{it.cat}</span><input type="number" value={it.amt} onChange={e=>{const n=[...items];n[i].amt=e.target.value;setItems(n);}} style={{width:100,textAlign:"right"}}/></div>))}<textarea value={oerNote} onChange={e=>setOerNote(e.target.value)} placeholder="Catatan koreksi..." rows={2} style={{marginTop:8,width:"100%"}}/><div style={{textAlign:"right"}}><button className="btn bg mt2" onClick={saveEdit}>Simpan</button></div></>
         ) : (
           <><div style={{display:"flex",justifyContent:"space-between",fontSize:13}}><span>CA</span><span>{rp(rc.ca)}</span></div><div style={{display:"flex",justifyContent:"space-between",fontSize:13}}><span>OER</span><span>{rp(rc.oer)}</span></div><div style={{height:1,background:"var(--ln)",margin:"8px 0"}}/><div style={{display:"flex",justifyContent:"space-between",fontSize:14,fontWeight:800,color:colV}}><span>{rc.isKurang?"Finance bayar kamu":rc.isLebih?"Kamu bayar perusahaan":"Pas"}</span><span>{rp(Math.abs(rc.selisih))}</span></div>
             {isOwner && !trx.settled && rc.isLebih && <div className="al aw mt3" style={{fontSize:11}}><strong>Instruksi:</strong> Transfer {rp(Math.abs(rc.selisih))} ke perusahaan dan kirim bukti via WhatsApp.</div>}
@@ -635,6 +644,7 @@ function OerReconBox({ trx, rc, isFin, isOwner, onAction }) {
 
 function DetailModal({ trx, user, onClose, onAction, onEdit }) {
   const [note,setNote] = useState(""); const [tDate,setTDate] = useState(trx.transferDate||""); const [busy,setBusy] = useState(false);
+  const [editing,setEditing] = useState(false);
   const isFin = user.role==="finance"; const isOwner = user.role==="employee" && (trx.submitterUsername===user.username || trx.submitter===user.name);
   const rc = recon(trx);
   
@@ -667,16 +677,18 @@ function DetailModal({ trx, user, onClose, onAction, onEdit }) {
   const act = (a, n, d) => { setBusy(true); onAction(trx.id, a, n, trx.type, d); const s = a==="pay" ? (trx.type==="cash_advance"?"awaiting_oer":"paid") : "processing"; API.updateStatus(trx.id, {status:s, finance_note:n, transfer_date:d, settled_date:today()}); setBusy(false); };
 
   return (
-    <div className="ov" onClick={e=>e.target===e.currentTarget&&onClose()}><div className="mo"><div className="mh"><div><span className="mono">{trx.id}</span><h2 style={{fontSize:15,fontWeight:800}}>{trx.purpose}</h2></div><button className="btn bo sm" onClick={onClose}>✕</button></div>
+    <div className="ov" onClick={e=>e.target===e.currentTarget&&onClose()}><div className="mo"><div className="mh"><div><span className="mono">{trx.id}</span><h2 style={{fontSize:15,fontWeight:800}}>{trx.purpose}</h2></div><div style={{display:"flex",gap:6,alignItems:"center"}}>{(isFin||isOwner)&&<button className="btn bo sm" onClick={()=>setEditing(true)}>✏️ Edit</button>}<button className="btn bo sm" onClick={onClose}>✕</button></div></div>
       <div className="mb2">
-        <div style={{display:"flex",gap:7,alignItems:"center",padding:10,background:"var(--ln2)",borderRadius:10,marginBottom:16}}><TTag t={trx.type}/><SBadge s={trx.status} trx={trx} isOwner={isOwner}/><LateBadge d={trx}/></div>
-        <div className="g2 mb4"><div><p className="sl">Pemohon</p><p className="bold">{trx.submitter}</p><p style={{fontSize:12}}>{trx.dept}</p></div><div><p className="sl">Perjalanan</p><p className="bold">{trx.destination}</p><p style={{fontSize:12}}>{fd(trx.dateStart)} – {fd(trx.dateEnd)}</p></div></div>
-        <div className="fs mb4"><div className="fst">Rincian</div>{trx.categories.map((c,i)=>(<div key={i} style={{display:"flex",justifyContent:"space-between",fontSize:13,padding:"4px 0"}}><span>{c.cat}</span><span className="bold">{rp(c.amt)}</span></div>))}<div style={{display:"flex",justifyContent:"space-between",marginTop:8,paddingTop:8,borderTop:"2px solid var(--tl)"}}><span className="bold">TOTAL</span><span className="bold" style={{fontSize:16}}>{rp(trx.amount)}</span></div></div>
-        {trx.type==="cash_advance" && rc && <OerReconBox trx={trx} rc={rc} isFin={isFin} isOwner={isOwner} onAction={onAction}/>}
-        <p className="sl mb3">Progress</p><div>{tl.map((t,i)=>(<div key={i} className="tlr"><div className="tldc"><div className="tld" style={{background:t.ok?t.col:"var(--ln)"}}><Ic n={t.icon} s={12} c={t.ok?"#fff":"var(--i4)"}/></div>{i<tl.length-1&&<div className="tlln"/>}</div><div className="tlb"><div className="tlt" style={{color:t.ok?"var(--ink)":"var(--i4)"}}>{t.title}</div><div className="tls">{t.sub}</div></div></div>))}</div>
-        {isFin && ["approved","doc_complete"].includes(trx.status) && <div className="mt4 fs"><div className="fst">Mulai Proses</div><textarea value={note} onChange={e=>setNote(e.target.value)} placeholder="Catatan..." rows={2}/><button className="btn bp mt2" onClick={()=>act("process",note)}>Proses</button></div>}
-        {isFin && trx.status==="processing" && <div className="mt4 fs"><div className="fst">Konfirmasi Bayar</div><p style={{fontSize:12,marginBottom:8}}>Transfer ke: <strong>{trx.submitter}</strong></p><label className="fl">Tgl Masuk Rekening (Opsional)</label><input type="date" value={tDate} onChange={e=>setTDate(e.target.value)}/><button className="btn bg mt2" onClick={()=>act("pay",note,tDate)}>Tandai Dibayar</button></div>}
-        {isOwner && trx.type==="cash_advance" && ["paid","awaiting_oer"].includes(trx.status) && !trx.oerAmount && <div className="mt4 fs"><div className="fst">Submit OER</div><p style={{fontSize:12,marginBottom:8}}>Trip selesai. Masukkan rincian pengeluaran aktual untuk rekonsiliasi.</p><button className="btn bp sm" onClick={()=>{const n = prompt("Total pengeluaran?"); if(n){const d={oerAmount:parseFloat(n),oerCategories:[{cat:"Lain-lain",amt:parseFloat(n)}],oerDate:today()}; onAction(trx.id,"oer_submitted",d); API.submitOer(trx.id,d);}}}>Isi OER (Simple)</button></div>}
+        {editing ? <EditForm trx={trx} onSave={updated=>{setEditing(false);onEdit(updated);}} onCancel={()=>setEditing(false)}/> : <>
+          <div style={{display:"flex",gap:7,alignItems:"center",padding:10,background:"var(--ln2)",borderRadius:10,marginBottom:16}}><TTag t={trx.type}/><SBadge s={trx.status} trx={trx} isOwner={isOwner}/><LateBadge d={trx}/></div>
+          <div className="g2 mb4"><div><p className="sl">Pemohon</p><p className="bold">{trx.submitter}</p><p style={{fontSize:12}}>{trx.dept}</p></div><div><p className="sl">Perjalanan</p><p className="bold">{trx.destination}</p><p style={{fontSize:12}}>{fd(trx.dateStart)} – {fd(trx.dateEnd)}</p></div></div>
+          <div className="fs mb4"><div className="fst">Rincian</div>{trx.categories.map((c,i)=>(<div key={i} style={{display:"flex",justifyContent:"space-between",fontSize:13,padding:"4px 0"}}><span>{c.cat}</span><span className="bold">{rp(c.amt)}</span></div>))}<div style={{display:"flex",justifyContent:"space-between",marginTop:8,paddingTop:8,borderTop:"2px solid var(--tl)"}}><span className="bold">TOTAL</span><span className="bold" style={{fontSize:16}}>{rp(trx.amount)}</span></div></div>
+          {trx.type==="cash_advance" && rc && <OerReconBox trx={trx} rc={rc} isFin={isFin} isOwner={isOwner} onAction={onAction}/>}
+          <p className="sl mb3">Progress</p><div>{tl.map((t,i)=>(<div key={i} className="tlr"><div className="tldc"><div className="tld" style={{background:t.ok?t.col:"var(--ln)"}}><Ic n={t.icon} s={12} c={t.ok?"#fff":"var(--i4)"}/></div>{i<tl.length-1&&<div className="tlln"/>}</div><div className="tlb"><div className="tlt" style={{color:t.ok?"var(--ink)":"var(--i4)"}}>{t.title}</div><div className="tls">{t.sub}</div></div></div>))}</div>
+          {isFin && ["approved","doc_complete"].includes(trx.status) && <div className="mt4 fs"><div className="fst">Mulai Proses</div><textarea value={note} onChange={e=>setNote(e.target.value)} placeholder="Catatan..." rows={2}/><button className="btn bp mt2" onClick={()=>act("process",note)}>Proses</button></div>}
+          {isFin && trx.status==="processing" && <div className="mt4 fs"><div className="fst">Konfirmasi Bayar</div><p style={{fontSize:12,marginBottom:8}}>Transfer ke: <strong>{trx.submitter}</strong></p><label className="fl">Tgl Masuk Rekening (Opsional)</label><input type="date" value={tDate} onChange={e=>setTDate(e.target.value)}/><button className="btn bg mt2" onClick={()=>act("pay",note,tDate)}>Tandai Dibayar</button></div>}
+          {isOwner && trx.type==="cash_advance" && ["paid","awaiting_oer"].includes(trx.status) && !trx.oerAmount && <div className="mt4 fs"><div className="fst">Submit OER</div><p style={{fontSize:12,marginBottom:8}}>Trip selesai. Masukkan rincian pengeluaran aktual untuk rekonsiliasi.</p><button className="btn bp sm" onClick={()=>{const n = prompt("Total pengeluaran (Rp)? (Hanya angka)"); if(n){const d={oerAmount:parseFloat(n),oerCategories:[{cat:"Lain-lain",amt:parseFloat(n)}],oerDate:today()}; onAction(trx.id,"oer_submitted",d); API.submitOer(trx.id,d);}}}>Isi OER (Cepat)</button></div>}
+        </>}
       </div></div></div>
   );
 }
@@ -685,12 +697,15 @@ function DetailModal({ trx, user, onClose, onAction, onEdit }) {
 // MAIN APP
 // ═══════════════════════════════════════════════════════════════
 export default function App() {
-  const [user,setUser] = useState(null); const [page,setPage] = useState("dashboard"); const [data,setData] = useState([]);
+  const [user,setUser] = useState(null); const [page,setPage] = useState("dashboard"); const [data,setData] = useState(DEMO);
   const [selId,setSelId] = useState(null); const [toast,setToast] = useState(null); const [loading,setLoading] = useState(false);
 
   const reloadData = async () => { if(!isReady())return; const res = await API.getAll(); if(res) setData(res.map(d=>withLateFlagOnly(d))); };
   const handleLogin = (u) => { setUser(u); setLoading(true); reloadData().then(()=>setLoading(false)); };
   const nav = (p, id) => { if (id) setSelId(id); setPage(p); };
+
+  // Polling data
+  useEffect(() => { if (!isReady() || !user) return; const timer = setInterval(() => reloadData(), 300000); return () => clearInterval(timer); }, [user]);
 
   const handleAction = (id, a, n, t, d) => {
     setData(prev=>prev.map(trx=>{
@@ -712,13 +727,13 @@ export default function App() {
     admin_lk: [{id:"dashboard",ic:"home",lb:"Dashboard"},{id:"admin_lk_queue",ic:"check",lb:"Antrian LK"},{id:"list",ic:"list",lb:"Semua"}],
     admin_jkt:[{id:"dashboard",ic:"home",lb:"Dashboard"},{id:"admin_jkt_queue",ic:"check",lb:"Antrian JKT"},{id:"list",ic:"list",lb:"Semua"}],
     ga:       [{id:"dashboard",ic:"home",lb:"Dashboard"},{id:"ga_queue",ic:"check",lb:"Antrian GA"},{id:"list",ic:"list",lb:"Semua"}],
-    finance:  [{id:"dashboard",ic:"home",lb:"Dashboard"},{id:"monitor",ic:"chart",lb:"Monitor"},{id:"list",ic:"list",lb:"Semua"},{id:"settings",ic:"settings",lb:"Pengaturan"}],
+    finance:  [{id:"dashboard",ic:"home",lb:"Dashboard"},{id:"monitor",ic:"chart",lb:"Monitor"},{id:"list",ic:"list",lb:"Semua"},{id:"overdue",ic:"alert",lb:"CA Outstanding"},{id:"settings",ic:"settings",lb:"Pengaturan"}],
   };
 
   return (
     <><style>{CSS}</style><div className="app">
       <div className="sb"><div className="sb-logo"><div className="sb-lh">ReimburseApp</div></div><div className="sb-u"><div className="av">{user.avatar}</div><div><div className="sb-un">{user.name}</div><div className="sb-ur">{user.role}</div></div></div>
-        <nav className="sb-nav">{(NAV[user.role]||[]).map(item=>(<div key={item.id} className={`nv${page===item.id?" on":""}`} onClick={()=>nav(item.id)}><Ic n={item.ic} s={14}/>{item.lb}</div>))}</nav>
+        <nav className="sb-nav">{(NAV[user.role]||[]).map(i=>(<div key={i.id} className={`nv${page===i.id?" on":""}`} onClick={()=>nav(i.id)}><Ic n={i.ic} s={14}/>{i.lb}</div>))}</nav>
         <div className="nv" style={{marginTop:"auto",opacity:0.5}} onClick={()=>window.location.reload()}>Log Out</div>
       </div>
       <div className="main">
@@ -732,12 +747,38 @@ export default function App() {
               {page==="admin_jkt_queue" && <AdminJKTQueue data={data} onAction={handleAction} onSel={id=>setSelId(id)}/>}
               {page==="ga_queue" && <GAQueue data={data} onAction={handleAction} onSel={id=>setSelId(id)}/>}
               {page==="monitor" && <MonitorPage data={data} onSel={id=>setSelId(id)} onAction={handleAction}/>}
-              {page==="settings" && <SettingsPage onSave={()=>reloadData()}/>}</>
+              {page==="settings" && <SettingsPage onSave={()=>reloadData()}/>}
+              {page==="overdue" && (
+                <div>
+                  <div className="al ae mb4"><Ic n="alert" s={14} c="#dc2626"/><strong>CA Outstanding — SLA: maks 5 hari kerja setelah trip selesai.</strong></div>
+                  <div className="card">
+                    <div className="ch"><h3>CA Belum Selesai</h3></div>
+                    <div className="tw"><table>
+                      <thead><tr><th>ID</th><th>Pemohon</th><th>Keperluan</th><th>Trip Selesai</th><th>Keterlambatan</th><th>Jumlah</th><th>Status</th></tr></thead>
+                      <tbody>{data.filter(d=>d.type==="cash_advance"&&!d.settled&&!["rejected"].includes(d.status)).map(d=>{
+                        const late=Math.max(0,ddiff(d.dateEnd,today())-5);
+                        return (
+                          <tr key={d.id} onClick={()=>setSelId(d.id)}>
+                            <td><span className="mono">{d.id}</span></td>
+                            <td><div className="bold">{d.submitter}</div><div style={{fontSize:11,color:"var(--i3)"}}>{d.dept}</div></td>
+                            <td><div className="trunc" style={{maxWidth:140}}>{d.purpose}</div></td>
+                            <td>{fd(d.dateEnd)}</td>
+                            <td>{late>0?<span style={{fontWeight:800,color:"var(--rd)"}}>+{late} hari</span>:<span style={{color:"var(--am)"}}>Dalam batas</span>}</td>
+                            <td className="bold">{rp(d.amount)}</td>
+                            <td><SBadge s={d.status}/><LateBadge d={d}/></td>
+                          </tr>
+                        );
+                      })}</tbody>
+                    </table></div>
+                  </div>
+                </div>
+              )}
+            </>
           )}
         </div>
       </div>
     </div>
-    {sel && <DetailModal trx={sel} user={user} onClose={()=>setSelId(null)} onAction={handleAction}/>}
+    {sel && <DetailModal trx={sel} user={user} onClose={()=>setSelId(null)} onAction={handleAction} onEdit={updated=>setData(prev=>prev.map(d=>d.id===updated.id?updated:d))}/>}
     {toast && <div className="toast" style={{background:"var(--ink)"}}>{toast.msg}</div>}</>
   );
 }
