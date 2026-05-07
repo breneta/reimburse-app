@@ -988,30 +988,40 @@ function OerReconBox({ trx, rc, isFin, canEdit, isOwner, onAction }) {
             <div style={{height:1,background:"var(--ln)",margin:"8px 0"}}/>
             <div style={{display:"flex",justifyContent:"space-between",fontSize:14,fontWeight:800,color:colV}}><span>{rc.isKurang?"Finance bayar kamu":rc.isLebih?"Kamu bayar perusahaan":"Pas"}</span><span>{rp(Math.abs(rc.selisih))}</span></div>
             
-            {isOwner && !trx.settled && rc.isLebih && (
+            {isOwner && trx.status === "lebih_bayar" && !trx.settled && (
               <div className="al aw mt3" style={{fontSize:12}}>
                 <div>
                   <p style={{fontWeight:800,marginBottom:6}}>⚠️ Sisa CA Perlu Dikembalikan: <strong>{rp(Math.abs(rc.selisih))}</strong></p>
                   <p style={{marginBottom:4}}>1. Transfer <strong>{rp(Math.abs(rc.selisih))}</strong> ke rekening perusahaan <strong>(4899889999)</strong></p>
-                  <p style={{marginBottom:4}}>2. Screenshot bukti transfer</p>
-                  <p style={{marginBottom:8}}>3. Kirim foto bukti ke WhatsApp Finance, sebutkan ID <strong>{trx.id}</strong></p>
-                  <a href={`https://wa.me/${FINANCE_WA}?text=${encodeURIComponent(`Halo, saya ${trx.submitter} mengirim bukti transfer pengembalian CA.\n\nID: ${trx.id}\nNominal: ${rp(Math.abs(rc.selisih))}\n\nTerlampir bukti transfer.`)}`}
+                  <p style={{marginBottom:8}}>2. Kirim bukti transfer dengan membalas pesan WhatsApp dari tim Finance.</p>
+                  <p style={{marginBottom:8, fontStyle: "italic", color: "var(--i3)"}}>*Atau jika ingin lebih cepat, kamu bisa inisiatif kirim via tombol di bawah:</p>
+                  <a href={`https://wa.me/${FINANCE_WA}?text=${encodeURIComponent(`Halo Finance, saya ${trx.submitter} mengirim bukti transfer pengembalian CA.\n\nID: ${trx.id}\nNominal: ${rp(Math.abs(rc.selisih))}\n\nTerlampir bukti transfer.`)}`}
                     target="_blank" rel="noreferrer"
                     style={{display:"inline-flex",alignItems:"center",gap:6,padding:"7px 12px",background:"#25D366",borderRadius:8,color:"white",fontWeight:800,fontSize:12,textDecoration:"none"}}>
-                    📲 Kirim via WhatsApp ke {FINANCE_WA_NAME}
+                    📲 Kirim Inisiatif via WA
                   </a>
                 </div>
               </div>
             )}
-            {isFin && !trx.settled && (trx.status==="lebih_bayar"||trx.status==="employee_confirmed") && (
-              <div className="mt3">
-                <button className="btn sm" style={{width:"100%",background:rc.isLebih?"#7c3aed":"#059669",color:"white"}}
-                  onClick={()=>doSettle(rc.isLebih?"Dana diterima via WA":"Sudah transfer ke karyawan")}>
-                  Konfirmasi & Selesaikan
+
+            {isFin && !trx.settled && trx.status === "lebih_bayar" && (
+              <div className="mt3" style={{display:"flex", flexDirection:"column", gap:8}}>
+                <button className="btn bo sm" style={{width:"100%", borderColor:"#7c3aed", color:"#7c3aed", background:"#f3e8ff"}}
+                  onClick={() => {
+                    const text = `Halo ${trx.submitter}, untuk settlement CA *${trx.id}* (${trx.purpose}), ada sisa lebih bayar sebesar *${rp(Math.abs(rc.selisih))}*.\n\nMohon dibantu transfer pengembaliannya ke rekening Perusahaan *(4899889999)* dan kirim foto buktinya ke sini ya 🙏 Terima kasih!`;
+                    navigator.clipboard.writeText(text);
+                    alert("Teks tagihan disalin! Silakan paste di chat WA Karyawan.");
+                  }}>
+                  📋 Salin Teks Tagihan WA
+                </button>
+                <button className="btn sm" style={{width:"100%",background:"#7c3aed",color:"white"}}
+                  onClick={()=>doSettle("Dana pengembalian CA sudah diverifikasi masuk")}>
+                  ✓ Verifikasi Dana Masuk & Selesaikan
                 </button>
               </div>
             )}
-            {isFin && trx.status==="kurang_bayar" && (
+
+            {isFin && trx.status === "kurang_bayar" && (
               <div className="mt3">
                 <button className="btn bp sm" style={{width:"100%"}}
                   onClick={()=>{ onAction(trx.id,"awaiting_confirm"); if(isReady()) API.updateStatus(trx.id,{status:"awaiting_confirm"}).catch(()=>{}); }}>
@@ -1019,11 +1029,21 @@ function OerReconBox({ trx, rc, isFin, canEdit, isOwner, onAction }) {
                 </button>
               </div>
             )}
-            {isOwner && trx.status==="awaiting_confirm" && rc.isKurang && (
+            
+            {isOwner && trx.status === "awaiting_confirm" && rc.isKurang && (
               <div className="mt3">
                 <button className="btn bg sm" style={{width:"100%"}}
                   onClick={()=>{ onAction(trx.id,"employee_confirmed"); if(isReady()) API.updateStatus(trx.id,{status:"employee_confirmed"}).catch(()=>{}); }}>
-                  ✓ Setuju & Konfirmasi
+                  ✓ Setuju & Minta Transfer
+                </button>
+              </div>
+            )}
+
+            {isFin && !trx.settled && trx.status === "employee_confirmed" && rc.isKurang && (
+              <div className="mt3">
+                <button className="btn sm" style={{width:"100%",background:"#059669",color:"white"}}
+                  onClick={()=>doSettle("Kekurangan sudah ditransfer ke karyawan")}>
+                  Selesaikan (Sudah Ditransfer)
                 </button>
               </div>
             )}
