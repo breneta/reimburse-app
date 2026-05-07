@@ -2190,33 +2190,6 @@ function OerReconBox({ trx, rc, isFin, isOwner, onAction }) {
   // Upload bukti transfer (hanya untuk kurang_bayar — bukti dari karyawan)
   const [proofImg, setProofImg]   = useState(trx.transferProof||"");
   const [uploading, setUploading] = useState(false);
-  const [uploadErr, setUploadErr] = useState("");
-
-  const handleProofFile = (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    if (file.size > 8 * 1024 * 1024) { setUploadErr("Ukuran file maks. 8MB"); return; }
-    if (!file.type.startsWith("image/")) { setUploadErr("Hanya file gambar (JPG/PNG)"); return; }
-    setUploadErr("");
-    // Auto-kompres ke JPEG 1200px maks, quality 0.75 → hasil ~100-300KB
-    const url = URL.createObjectURL(file);
-    const img = new Image();
-    img.onload = () => {
-      const MAX = 1200;
-      let { width, height } = img;
-      if (width > MAX || height > MAX) {
-        if (width > height) { height = Math.round(height * MAX / width); width = MAX; }
-        else { width = Math.round(width * MAX / height); height = MAX; }
-      }
-      const canvas = document.createElement("canvas");
-      canvas.width = width; canvas.height = height;
-      canvas.getContext("2d").drawImage(img, 0, 0, width, height);
-      setProofImg(canvas.toDataURL("image/jpeg", 0.75));
-      URL.revokeObjectURL(url);
-    };
-    img.onerror = () => { setUploadErr("Gagal membaca gambar, coba file lain"); URL.revokeObjectURL(url); };
-    img.src = url;
-  };
 
   const confirmOer = async () => {
     // Ini hanya untuk kurang_bayar — karyawan konfirmasi akan dikembalikan
@@ -2462,22 +2435,14 @@ function DetailModal({ trx, user, onClose, onAction, onEdit }) {
     } else setBusy(false);
   };
 
-  const [settleVoucher, setSettleVoucher] = useState("");
-  const [settleDocNo, setSettleDocNo]     = useState("");
-  const [settleDocDate, setSettleDocDate] = useState("");
-  const [transferDate, setTransferDate]   = useState(trx.transferDate||"");
-  const [settleSapText, setSettleSapText] = useState("");
+  const [transferDate, setTransferDate] = useState(trx.transferDate||"");
 
   const settle = () => {
     // Dipakai hanya untuk kurang_bayar setelah employee_confirmed
-    const settleNote = [note, settleDocDate?`Tgl: ${settleDocDate}`:""].filter(Boolean).join(" | ");
-    onAction(trx.id, "settle", settleNote, trx.type, settleVoucher, settleDocNo, settleSapText);
+    onAction(trx.id, "settle", note, trx.type);
     if (isReady()) SB.update(trx.id, {
       status:"settled", settled:true, settled_date:today(),
-      finance_note:settleNote,
-      bank_voucher_no:settleVoucher||"",
-      doc_no:settleDocNo||"",
-      sap_text:settleSapText||"",
+      finance_note:note||"",
     }).catch(e=>console.error("settle sync error:",e));
   };
   // OER submission state (for employee submitting OER against CA)
