@@ -666,12 +666,12 @@ function AdminLKQueue({ data, onAction, onSel }) {
       <div className="card mb3">
         <div className="ch"><h3>Menunggu Dokumen</h3></div>
         <div className="tw"><table>
-          <thead><tr><th>ID</th><th>Pemohon</th><th>Keperluan</th><th>Tujuan & Tanggal</th><th>Aksi</th></tr></thead>
+          <thead><tr><th>ID</th><th>Pemohon</th><th>Nominal</th><th>Tujuan & Tanggal</th><th>Aksi</th></tr></thead>
           <tbody>{queue.map(d=>(
             <tr key={d.id} onClick={()=>onSel(d.id)} style={{cursor:"pointer"}}>
               <td><span className="mono">{d.id}</span></td>
               <td><div className="bold">{d.submitter}</div></td>
-              <td><div className="trunc" style={{maxWidth:130}}>{d.purpose}</div></td>
+              <td><span className="bold">{rp(d.amount)}</span></td>
               <td><div className="bold" style={{fontSize:12}}>{d.destination}</div><div style={{fontSize:11,color:"var(--i3)"}}>{fd(d.dateStart)} - {fd(d.dateEnd)}</div></td>
               <td><button className="btn bg xs" onClick={e=>{e.stopPropagation(); if(!adminName)return alert("Isi nama admin"); onAction(d.id,"doc_received_lk",adminName); API.docReceivedLK(d.id,adminName);}}>Terima</button></td>
             </tr>
@@ -683,11 +683,12 @@ function AdminLKQueue({ data, onAction, onSel }) {
         <div className="card">
           <div className="ch"><h3>Siap Kirim ke Jakarta</h3></div>
           <div className="tw"><table>
-            <thead><tr><th>ID</th><th>Pemohon</th><th>Tujuan & Tanggal</th><th>Aksi</th></tr></thead>
+            <thead><tr><th>ID</th><th>Pemohon</th><th>Nominal</th><th>Tujuan & Tanggal</th><th>Aksi</th></tr></thead>
             <tbody>{received.map(d=>(
               <tr key={d.id} onClick={()=>onSel(d.id)} style={{cursor:"pointer"}}>
                 <td><span className="mono">{d.id}</span></td>
                 <td>{d.submitter}</td>
+                <td><span className="bold">{rp(d.amount)}</span></td>
                 <td><div className="bold" style={{fontSize:12}}>{d.destination}</div><div style={{fontSize:11,color:"var(--i3)"}}>{fd(d.dateStart)} - {fd(d.dateEnd)}</div></td>
                 <td><button className="btn bp xs" onClick={e=>{e.stopPropagation(); onAction(d.id,"doc_sent_jkt"); API.docSentJkt(d.id);}}>✈️ Kirim JKT</button></td>
               </tr>
@@ -714,12 +715,12 @@ function AdminJKTQueue({ data, onAction, onSel }) {
       <div className="card mb3">
         <div className="ch"><h3>Dari Luar Kota / Langsung</h3></div>
         <div className="tw"><table>
-          <thead><tr><th>ID</th><th>Pemohon</th><th>Keperluan</th><th>Tujuan & Tanggal</th><th>Aksi</th></tr></thead>
+          <thead><tr><th>ID</th><th>Pemohon</th><th>Nominal</th><th>Tujuan & Tanggal</th><th>Aksi</th></tr></thead>
           <tbody>{[...queue,...direct].map(d=>(
             <tr key={d.id} onClick={()=>onSel(d.id)} style={{cursor:"pointer"}}>
               <td><span className="mono">{d.id}</span></td>
               <td><div className="bold">{d.submitter}</div></td>
-              <td><div className="trunc" style={{maxWidth:130}}>{d.purpose}</div></td>
+              <td><span className="bold">{rp(d.amount)}</span></td>
               <td><div className="bold" style={{fontSize:12}}>{d.destination}</div><div style={{fontSize:11,color:"var(--i3)"}}>{fd(d.dateStart)} - {fd(d.dateEnd)}</div></td>
               <td><button className="btn bg xs" onClick={e=>{e.stopPropagation(); doRec(d.id);}}>Terima</button></td>
             </tr>
@@ -731,12 +732,12 @@ function AdminJKTQueue({ data, onAction, onSel }) {
         <div className="card">
           <div className="ch"><h3>OER Masuk</h3></div>
           <div className="tw"><table>
-            <thead><tr><th>ID</th><th>Pemohon</th><th>Keperluan</th><th>Tujuan & Tanggal</th><th>Aksi</th></tr></thead>
+            <thead><tr><th>ID</th><th>Pemohon</th><th>Nominal CA</th><th>Tujuan & Tanggal</th><th>Aksi</th></tr></thead>
             <tbody>{oerQueue.map(d=>(
               <tr key={d.id} onClick={()=>onSel(d.id)} style={{cursor:"pointer"}}>
                 <td><span className="mono">{d.id}</span></td>
                 <td>{d.submitter}</td>
-                <td><div className="trunc" style={{maxWidth:130}}>{d.purpose}</div></td>
+                <td><span className="bold">{rp(d.amount)}</span></td>
                 <td><div className="bold" style={{fontSize:12}}>{d.destination}</div><div style={{fontSize:11,color:"var(--i3)"}}>{fd(d.dateStart)} - {fd(d.dateEnd)}</div></td>
                 <td><button className="btn bg xs" onClick={e=>{e.stopPropagation(); if(!adminName)return alert("Admin?"); onAction(d.id,"oer_doc_received",adminName); API.oerDocReceived(d.id,adminName);}}>Terima OER</button></td>
               </tr>
@@ -761,12 +762,12 @@ function GAQueue({ data, onAction, onSel }) {
           <input value={gaNote} onChange={e=>setGaNote(e.target.value)} placeholder="Catatan opsional..." style={{width:200,fontSize:12,padding:"6px 10px",marginLeft:"auto"}}/>
         </div>
         <div className="tw"><table>
-          <thead><tr><th>ID</th><th>Pemohon</th><th>Keperluan</th><th>Tujuan & Tanggal</th><th>Aksi</th></tr></thead>
+          <thead><tr><th>ID</th><th>Pemohon</th><th>Nominal</th><th>Tujuan & Tanggal</th><th>Aksi</th></tr></thead>
           <tbody>{queue.map(d=>(
             <tr key={d.id} onClick={()=>onSel(d.id)} style={{cursor:"pointer"}}>
               <td><span className="mono">{d.id}</span></td>
               <td><div className="bold">{d.submitter}</div></td>
-              <td><div className="trunc" style={{maxWidth:130}}>{d.purpose}</div></td>
+              <td><span className="bold">{rp(d.amount)}</span></td>
               <td><div className="bold" style={{fontSize:12}}>{d.destination}</div><div style={{fontSize:11,color:"var(--i3)"}}>{fd(d.dateStart)} - {fd(d.dateEnd)}</div></td>
               <td><button className="btn bg xs" onClick={e=>{e.stopPropagation(); onAction(d.id,"doc_complete",gaNote); API.docComplete(d.id,null,gaNote); setGaNote("");}}>✓ Lengkap</button></td>
             </tr>
@@ -778,14 +779,14 @@ function GAQueue({ data, onAction, onSel }) {
         <div className="card">
           <div className="ch"><h3 style={{color:"#7c3aed"}}>OER Dokumen — Perlu Approve</h3></div>
           <div className="tw"><table>
-            <thead><tr><th>ID</th><th>Pemohon</th><th>Keperluan</th><th>Tujuan & Tanggal</th><th>Selisih</th><th>Aksi</th></tr></thead>
+            <thead><tr><th>ID</th><th>Pemohon</th><th>Nominal CA</th><th>Tujuan & Tanggal</th><th>Selisih</th><th>Aksi</th></tr></thead>
             <tbody>{oerQueue.map(d=>{
               const sel = (d.oerAmount||0)-d.amount; 
               return(
                 <tr key={d.id} onClick={()=>onSel(d.id)} style={{cursor:"pointer"}}>
                   <td><span className="mono">{d.id}</span></td>
                   <td>{d.submitter}</td>
-                  <td><div className="trunc" style={{maxWidth:130}}>{d.purpose}</div></td>
+                  <td><span className="bold">{rp(d.amount)}</span></td>
                   <td><div className="bold" style={{fontSize:12}}>{d.destination}</div><div style={{fontSize:11,color:"var(--i3)"}}>{fd(d.dateStart)} - {fd(d.dateEnd)}</div></td>
                   <td className="bold" style={{color:sel<0?"#7c3aed":"#059669"}}>{sel<0?`Lebih ${rp(Math.abs(sel))}`:sel>0?`Kurang ${rp(sel)}`:"Pas"}</td>
                   <td><button className="btn bg xs" style={{background:"#7c3aed"}} onClick={e=>{e.stopPropagation(); onAction(d.id,"oer_doc_complete",gaNote); API.oerDocComplete(d.id,gaNote,d.amount,d.oerAmount); setGaNote("");}}>Approve OER</button></td>
