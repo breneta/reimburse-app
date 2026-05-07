@@ -702,8 +702,6 @@ function LoginScreen({ onLogin }) {
     onLogin({ ...infoMap[role], role });
   };
 
-  // PwInput moved to module scope
-
   return (
     <div className="lw">
       <div className="lr1"/><div className="lr2"/>
@@ -847,19 +845,22 @@ function Dashboard({ data, user, nav, onUpdateUser }) {
   const active  = mine.filter(d=>["pending","approved","processing"].includes(d.status));
   const pct     = totalRp?Math.min(100,Math.round(paidRp/totalRp*100)):0;
 
-  // Notifikasi khusus karyawan — CA yang perlu dikonfirmasi (perusahaan akan transfer ke mereka)
-  const menungguKonfirmasi = user.role==="employee"
-    ? mine.filter(d=>d.type==="cash_advance" && d.status==="awaiting_confirm")
-    : [];  // mine sudah difilter dengan isMyTrx, jadi ini otomatis aman
+  // Notifikasi khusus karyawan — CA yang sudah rekonsiliasi
+  const kurangBayarNotif = user.role==="employee"
+    ? mine.filter(d=>d.type==="cash_advance" && (d.status==="kurang_bayar"||d.status==="awaiting_confirm") && !d.settled)
+    : [];
+
+  const lebihBayarNotif = user.role==="employee"
+    ? mine.filter(d=>d.type==="cash_advance" && d.status==="lebih_bayar" && !d.settled)
+    : [];
 
   const [bankAcc, setBankAcc] = useState(user.bank_account||"");
   const [accName, setAccName] = useState(user.account_name||"");
   const [bankSaving, setBankSaving] = useState(false);
   const [bankSaved, setBankSaved]   = useState(false);
 
-  // Sync bank info dari Supabase setelah reloadData — useState tidak re-init saat prop berubah
+  // Sync bank info dari Supabase setelah reloadData
   useEffect(() => {
-    // Selalu sync dari server — update state tanpa kondisi agar perubahan dari tab lain ikut
     setBankAcc(user.bank_account||"");
     setAccName(user.account_name||"");
   }, [user.bank_account, user.account_name]);
@@ -887,46 +888,40 @@ function Dashboard({ data, user, nav, onUpdateUser }) {
 
       {overdue.length>0 && <div className="al ae mb4"><Ic n="alert" s={14} c="#dc2626"/><span><strong>{overdue.length} CA Terlambat</strong> — melewati batas 5 hari kerja!</span></div>}
 
-      {/* 🔴 NOTIFIKASI: Karyawan harus kembalikan uang ke perusahaan */}
-      {menungguKonfirmasi.map(d=>(
+      {/* 🟢 NOTIFIKASI: Karyawan Kurang Bayar (Finance akan transfer ke karyawan) */}
+      {kurangBayarNotif.map(d=>(
         <div key={d.id} style={{marginBottom:12,padding:"14px 16px",background:"linear-gradient(135deg,#1e40af 0%,#3b82f6 100%)",borderRadius:"var(--r2)",boxShadow:"0 4px 16px rgba(30,64,175,0.3)"}}>
           <div style={{display:"flex",alignItems:"flex-start",gap:12}}>
-            <div style={{fontSize:24,flexShrink:0}}>🔔</div>
+            <div style={{fontSize:24,flexShrink:0}}>🏦</div>
             <div style={{flex:1}}>
-              <p style={{fontSize:13,fontWeight:800,color:"white",marginBottom:4}}>Konfirmasi Nominal — Cash Advance {d.id}</p>
+              <p style={{fontSize:13,fontWeight:800,color:"white",marginBottom:4}}>Menunggu Transfer Finance — CA {d.id}</p>
               <p style={{fontSize:12,color:"rgba(255,255,255,0.9)",marginBottom:8}}>
-                Finance akan mentransfer <strong style={{color:"#fde68a"}}>{rp(Math.abs((d.oerAmount||0) - d.amount))}</strong> ke rekeningmu. Konfirmasi jika nominalnya sudah sesuai.
+                Finance akan mentransfer <strong style={{color:"#fde68a"}}>{rp(Math.abs((d.oerAmount||0) - d.amount))}</strong> ke rekeningmu. Tidak perlu aksi tambahan, tunggu konfirmasi pelunasan dari Finance.
               </p>
-              <p style={{fontSize:11,color:"rgba(255,255,255,0.75)"}}>Buka detail pengajuan untuk mengkonfirmasi.</p>
             </div>
-            <button className="btn sm" onClick={()=>nav&&nav("list")} style={{background:"white",color:"#1e40af",fontWeight:800,flexShrink:0,fontSize:12}}>
-              Lihat →
-            </button>
+            <button className="btn sm" onClick={()=>nav&&nav("list")} style={{background:"white",color:"#1e40af",fontWeight:800,flexShrink:0,fontSize:12}}>Lihat →</button>
+          </div>
+        </div>
+      ))}
+
+      {/* 🟠 NOTIFIKASI: Karyawan Lebih Bayar (Harus kembalikan dana & WA Finance) */}
+      {lebihBayarNotif.map(d=>(
+        <div key={d.id} style={{marginBottom:12,padding:"14px 16px",background:"linear-gradient(135deg,#7c3aed 0%,#8b5cf6 100%)",borderRadius:"var(--r2)",boxShadow:"0 4px 16px rgba(124,58,237,0.3)"}}>
+          <div style={{display:"flex",alignItems:"flex-start",gap:12}}>
+            <div style={{fontSize:24,flexShrink:0}}>⚠️</div>
+            <div style={{flex:1}}>
+              <p style={{fontSize:13,fontWeight:800,color:"white",marginBottom:4}}>Pengembalian Sisa CA — {d.id}</p>
+              <p style={{fontSize:12,color:"rgba(255,255,255,0.9)",marginBottom:8}}>
+                Terdapat sisa dana CA (Lebih Bayar) sebesar <strong style={{color:"#fde68a"}}>{rp(Math.abs((d.amount||0) - (d.oerAmount||0)))}</strong>. Harap transfer ke perusahaan dan kirim bukti via WhatsApp.
+              </p>
+            </div>
+            <button className="btn sm" onClick={()=>nav&&nav("list")} style={{background:"white",color:"#7c3aed",fontWeight:800,flexShrink:0,fontSize:12}}>Lihat →</button>
           </div>
         </div>
       ))}
 
       {user.role==="admin_lk" && data.filter(d=>d.status==="pending").length>0 && <div className="al aw mb4"><Ic n="clock" s={14} c="#d97706"/><span><strong>{data.filter(d=>d.status==="pending").length} pengajuan</strong> menunggu dokumen diterima.</span></div>}
       {user.role==="finance" && approved.length>0 && <div className="al ab mb4"><Ic n="money" s={14} c="#2563eb"/><span><strong>{approved.length} pengajuan</strong> sudah disetujui, siap diproses.</span></div>}
-
-      {/* 🟡 NOTIFIKASI FINANCE: Menunggu konfirmasi karyawan (kurang_bayar) */}
-      {user.role==="finance" && (() => {
-        const waitingConfirm = data.filter(d =>
-          d.type==="cash_advance" &&
-          d.status==="awaiting_confirm" &&
-          !d.settled
-        );
-        if (waitingConfirm.length === 0) return null;
-        return (
-          <div className="al aw mb4">
-            <Ic n="clock" s={14} c="#d97706"/>
-            <span>
-              <strong>{waitingConfirm.length} CA kurang bayar</strong> menunggu konfirmasi karyawan —&nbsp;
-              {waitingConfirm.map((d,i) => <span key={d.id}>{d.submitter}{i < waitingConfirm.length-1 ? ", " : ""}</span>)}
-            </span>
-          </div>
-        );
-      })()}
 
       <div className="sg">
         <div className="st tl"><div className="sl">Total Diajukan</div><div className="sv md">{rp(totalRp)}</div><div className="ss">{mine.length} pengajuan</div></div>
@@ -996,7 +991,6 @@ function SubmitPage({ user, onSubmit, data }) {
 
   const submit = async () => {
     if (!f.purpose||!f.dateStart||!f.dateEnd||!f.approverName||total===0) { alert("Harap lengkapi semua field wajib (*)"); return; }
-    // Status awal selalu pending — jalur ditentukan oleh docRoute field
     const initStatus = "pending";
     const entry = {
       id:gid(), type:f.type, submitter:user.name, submitterUsername:user.username||"", dept:user.dept,
@@ -1013,11 +1007,9 @@ function SubmitPage({ user, onSubmit, data }) {
     setSubmitState("saving");
     setSavedEntry(entry);
 
-    // Step 1: kirim ke Supabase
     const res = await API.create(entry);
     if (!res) { setSubmitState("error"); return; }
 
-    // Step 2: verifikasi — pastikan data benar-benar ada di Supabase
     setSubmitState("verifying");
     let verified = false;
     for (let attempt=0; attempt<4; attempt++) {
@@ -1028,11 +1020,10 @@ function SubmitPage({ user, onSubmit, data }) {
     if (!verified) { setSubmitState("error"); return; }
 
     setSubmitState("done");
-    await new Promise(r=>setTimeout(r,1200)); // tampilkan success sebentar
+    await new Promise(r=>setTimeout(r,1200));
     onSubmit(entry);
   };
 
-  // Error state — bisa retry
   if (submitState==="error") return (
     <div className="card"><div className="cb" style={{textAlign:"center",padding:"32px 16px"}}>
       <div style={{fontSize:36,marginBottom:12}}>❌</div>
@@ -1045,7 +1036,6 @@ function SubmitPage({ user, onSubmit, data }) {
     </div></div>
   );
 
-  // Loading states
   if (submitState==="saving"||submitState==="verifying"||submitState==="done") {
     const steps = [
       {key:"saving",    icon:"⏳", label:"Menyimpan ke database...",           done: submitState!=="saving"},
@@ -1087,7 +1077,6 @@ function SubmitPage({ user, onSubmit, data }) {
     <div><div className="card">
       <div className="ch"><div><h3>Form Pengajuan</h3><p style={{fontSize:11,color:"var(--i3)",marginTop:3}}>Oleh: <strong>{user.name}</strong> · {user.dept}</p></div></div>
       <div className="cb">
-        {/* JALUR DOKUMEN — pilih dulu sebelum isi yang lain */}
         <div className="fs mb4" style={{border:"2px solid var(--tl)",background:"var(--tlb)"}}>
           <div className="fst" style={{color:"var(--tl)"}}>📬 Jalur Pengiriman Dokumen <span style={{color:"var(--rd)"}}>*</span></div>
           <div style={{display:"flex",gap:9,marginTop:4}}>
@@ -1104,7 +1093,6 @@ function SubmitPage({ user, onSubmit, data }) {
           {f.docRoute==="admin_lk" && <div className="al aw mt3"><Ic n="send" s={13} c="#d97706"/><span>Dokumen fisik masuk antrian <strong>Admin Luar Kota</strong> dulu → dikirim ke Jakarta → GA → Finance.</span></div>}
           {f.docRoute==="admin_jkt" && <div className="al ab mt3"><Ic n="check" s={13} c="#2563eb"/><span>Dokumen fisik langsung ke <strong>Admin Jakarta</strong> → GA → Finance.</span></div>}
         </div>
-        {/* JENIS */}
         <div className="fs mb4">
           <div className="fst">Jenis Pengajuan</div>
           <div style={{display:"flex",gap:9}}>
@@ -1127,7 +1115,6 @@ function SubmitPage({ user, onSubmit, data }) {
             </div>
           )}
         </div>
-        {/* DETAIL */}
         <div className="fs mb4">
           <div className="fst">Detail Perjalanan</div>
           <div className="fg mb3"><label className="fl">Keperluan <span style={{color:"var(--rd)"}}>*</span></label><textarea value={f.purpose} onChange={e=>set("purpose",e.target.value)} placeholder="Jelaskan tujuan..." rows={2}/></div>
@@ -1137,7 +1124,6 @@ function SubmitPage({ user, onSubmit, data }) {
             <div><label className="fl">Tgl Selesai <span style={{color:"var(--rd)"}}>*</span></label><input type="date" value={f.dateEnd} onChange={e=>set("dateEnd",e.target.value)}/></div>
           </div>
         </div>
-        {/* BIAYA */}
         <div className="fs mb4">
           <div className="fst">Rincian Biaya</div>
           {f.items.map((it,i)=>(
@@ -1244,7 +1230,6 @@ function AdminLKQueue({ data, onAction, onSel, user }) {
     <div>
       <div className="al ab mb4"><Ic n="bell" s={14} c="#2563eb"/><span><strong>Admin Luar Kota</strong> — Terima dokumen fisik dari karyawan luar kota, lalu kirim ke Jakarta.</span></div>
 
-      {/* Search + Nama Admin */}
       <div className="card" style={{marginBottom:12}}>
         <div style={{padding:"10px 14px",display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
           <div>
@@ -1258,7 +1243,6 @@ function AdminLKQueue({ data, onAction, onSel, user }) {
         </div>
       </div>
 
-      {/* Antrian: Menunggu Diterima */}
       <div className="card" style={{marginBottom:12}}>
         <div className="ch">
           <h3>Menunggu Dokumen Diterima</h3>
@@ -1290,7 +1274,6 @@ function AdminLKQueue({ data, onAction, onSel, user }) {
         </div>
       </div>
 
-      {/* Sudah Diterima — Kirim ke Jakarta */}
       {received.length > 0 && (
         <div className="card">
           <div className="ch">
@@ -1322,7 +1305,6 @@ function AdminLKQueue({ data, onAction, onSel, user }) {
         </div>
       )}
 
-      {/* OER dari karyawan luar kota — perlu lewat Admin LK dulu */}
       {(() => {
         const oerLKQueue = data.filter(d => d.status === "oer_doc_pending" && d.area && d.area !== "Jakarta");
         if (oerLKQueue.length === 0) return null;
@@ -1370,7 +1352,6 @@ function AdminJKTQueue({ data, onAction, onSel, user }) {
   const jktPending = data.filter(d => d.status === "pending" && (d.docRoute==="admin_jkt" || (!d.docRoute && (d.area==="Jakarta"||!d.area))))
     .filter(d => !searchQ || d.submitter.toLowerCase().includes(searchQ.toLowerCase()) || d.id.toLowerCase().includes(searchQ.toLowerCase()));
 
-  // Semua yang bisa di-select: dari LK + karyawan Jakarta langsung
   const selLKIds  = Object.keys(sel).filter(k => sel[k] && queue.find(d=>d.id===k));
   const selJKTIds = Object.keys(sel).filter(k => sel[k] && jktPending.find(d=>d.id===k));
 
@@ -1400,7 +1381,6 @@ function AdminJKTQueue({ data, onAction, onSel, user }) {
         </div>
       </div>
 
-      {/* Dari Luar Kota */}
       <div className="card" style={{marginBottom:12}}>
         <div className="ch">
           <h3>Dari Luar Kota — Menunggu Diterima</h3>
@@ -1432,7 +1412,6 @@ function AdminJKTQueue({ data, onAction, onSel, user }) {
         </div>
       </div>
 
-      {/* OER Dokumen masuk — setelah karyawan submit OER */}
       {(() => {
         const oerQueue = data.filter(d => d.status === "oer_doc_pending");
         if (oerQueue.length === 0) return null;
@@ -1470,7 +1449,6 @@ function AdminJKTQueue({ data, onAction, onSel, user }) {
         );
       })()}
 
-      {/* Karyawan Jakarta langsung — sekarang juga bisa bulk select */}
       {jktPending.length > 0 && (
         <div className="card">
           <div className="ch">
@@ -1512,9 +1490,8 @@ function GAQueue({ data, onAction, onSel, user }) {
   const [sel, setSel] = useState({});
   const [gaNote, setGaNote] = useState("");
   const [editOerId, setEditOerId] = useState(null);
-  const [oerVals, setOerVals] = useState({});  // keyed by trx id
+  const [oerVals, setOerVals] = useState({});
   const setOerVal = (id, v) => setOerVals(p=>({...p,[id]:v}));
-  // queue reguler hanya doc_received_jkt (bukan OER — OER punya tombol Approve sendiri)
   const queue    = data.filter(d => d.status === "doc_received_jkt");
   const oerQueue = data.filter(d => d.status === "oer_doc_received");
   const selIds = Object.keys(sel).filter(k => sel[k] && queue.find(d=>d.id===k));
@@ -1590,8 +1567,6 @@ function GAQueue({ data, onAction, onSel, user }) {
         </div>
       </div>
 
-
-      {/* OER Dokumen — Karyawan sudah kirim OER, GA perlu cek dan approve */}
       {oerQueue.length > 0 && (
         <div className="card" style={{marginTop:14}}>
           <div className="ch">
@@ -1697,7 +1672,6 @@ function MonitorPage({ data, onSel, onAction }) {
         ))}
       </div>
 
-      {/* Bulk action bar */}
       {selDocs.length > 0 && (
         <div className="card" style={{marginBottom:12,padding:"12px 16px",background:"var(--tlb)",border:"1px solid var(--tlbd)"}}>
           <p style={{fontSize:13,fontWeight:700,color:"#134e4a",marginBottom:10}}>{selDocs.length} transaksi dipilih</p>
@@ -1730,7 +1704,6 @@ function MonitorPage({ data, onSel, onAction }) {
         </div>
       )}
 
-      {/* Tabel transaksi yang perlu ditindak */}
       <div className="card" style={{marginBottom:16}}>
         <div className="ch"><h3>Perlu Ditindak</h3><span style={{fontSize:12,color:"var(--i3)",fontWeight:600}}>{actionable.length} transaksi</span></div>
         <div className="tw"><table>
@@ -1802,23 +1775,18 @@ function MonitorPage({ data, onSel, onAction }) {
 function FilingPage({ data, onSaveDoc }) {
   const thisMonth = () => new Date().toISOString().slice(0,7);
   const [filterMonth, setFilterMonth] = useState(thisMonth());
-  const [editId, setEditId] = useState(null);  // trx.id yang sedang diedit Transfer To
+  const [editId, setEditId] = useState(null);
   const [editTransferTo, setEditTransferTo] = useState("");
   const [saving, setSaving] = useState(false);
 
-  // Transaksi yang sudah dibayar dan punya Bank Voucher No
   const paidTrx = data.filter(d =>
     ["paid","awaiting_oer","settled","kurang_bayar","lebih_bayar","awaiting_confirm","employee_confirmed"].includes(d.status)
     && d.bankVoucherNo
   );
 
-  // Semua bulan yang ada dari settledDate
   const months = [...new Set([thisMonth(), ...paidTrx.map(d=>(d.settledDate||"").slice(0,7)).filter(Boolean)])].sort().reverse();
-
   const filtered = paidTrx.filter(d=>(d.settledDate||"").slice(0,7)===filterMonth);
   const total = filtered.reduce((a,d)=>a+d.amount,0);
-
-  // Incomplete = sudah paid tapi belum ada docNo atau sapText
   const incomplete = filtered.filter(d=>!d.docNo||!d.sapText);
 
   const saveTransferTo = async (trxId, val) => {
@@ -2078,7 +2046,6 @@ function EditForm({ trx, user, onSave, onCancel }) {
         <span>{isFin ? "Mode Edit Finance — semua field bisa diubah." : "Edit Pengajuan — perubahan akan disimpan langsung."}</span>
       </div>
 
-      {/* Jenis */}
       <div className="fs mb3">
         <div className="fst">Jenis Pengajuan</div>
         <div style={{display:"flex",gap:9}}>
@@ -2091,7 +2058,6 @@ function EditForm({ trx, user, onSave, onCancel }) {
         </div>
       </div>
 
-      {/* Detail */}
       <div className="fs mb3">
         <div className="fst">Detail Perjalanan</div>
         <div className="fg mb3">
@@ -2105,7 +2071,6 @@ function EditForm({ trx, user, onSave, onCancel }) {
         </div>
       </div>
 
-      {/* Biaya */}
       <div className="fs mb3">
         <div className="fst">Rincian Biaya</div>
         {f.items.map((it,i)=>(
@@ -2126,7 +2091,6 @@ function EditForm({ trx, user, onSave, onCancel }) {
         </div>}
       </div>
 
-      {/* Atasan & catatan */}
       <div className="fg fg2 mb3">
         <div className="fs"><div className="fst">Nama Admin *</div><input value={f.approverName} onChange={e=>set("approverName",e.target.value)}/></div>
         <div className="fs"><div className="fst">Catatan</div><textarea value={f.notes} onChange={e=>set("notes",e.target.value)} rows={2}/></div>
@@ -2139,7 +2103,6 @@ function EditForm({ trx, user, onSave, onCancel }) {
     </div>
   );
 }
-
 
 // ═══════════════════════════════════════════════════════════════
 // OER RECON BOX — Finance edit OER + Konfirmasi karyawan
@@ -2168,36 +2131,19 @@ function OerReconBox({ trx, rc, isFin, isOwner, onAction }) {
     setEditMode(false);
   };
 
-  const sendForConfirmation = () => {
-    // Hanya untuk kurang_bayar (karyawan bayar ke perusahaan)
-    onAction(trx.id, "send_confirm", {});
-    if (isReady()) API.sendConfirm(trx.id).catch(()=>{});
-  };
+  // State untuk settle (dipakai Finance untuk selesaikan kurang_bayar & lebih_bayar secara langsung)
+  const [settleVoucher, setSettleVoucher] = useState("");
+  const [settleNote,    setSettleNote]    = useState("");
+  const [settling,      setSettling]      = useState(false);
 
-  // State untuk settle lebih_bayar langsung di Finance
-  const [settleLBVoucher, setSettleLBVoucher] = useState("");
-  const [settleLBNote,    setSettleLBNote]    = useState("");
-  const [settlingLB,      setSettlingLB]      = useState(false);
-
-  const doSettleLebihBayar = async () => {
-    setSettlingLB(true);
+  const doSettle = async () => {
+    setSettling(true);
     try {
-      onAction(trx.id, "settle_lebih_bayar", settleLBNote, trx.type, settleLBVoucher);
-      if (isReady()) await API.settleLebihBayar(trx.id, settleLBNote, settleLBVoucher).catch(()=>{});
-    } finally { setSettlingLB(false); }
+      // Kita re-use action settle_lebih_bayar karena logic updatenya sama (menjadi settled)
+      onAction(trx.id, "settle_lebih_bayar", settleNote, trx.type, settleVoucher);
+      if (isReady()) await API.settleLebihBayar(trx.id, settleNote, settleVoucher).catch(()=>{});
+    } finally { setSettling(false); }
   };
-
-  // Upload bukti transfer (hanya untuk kurang_bayar — bukti dari karyawan)
-  const [uploading, setUploading] = useState(false);
-
-  const confirmOer = async () => {
-    setUploading(true);
-    try {
-      onAction(trx.id, "emp_confirm", {});
-      if (isReady()) API.empConfirm(trx.id).catch(()=>{});
-    } finally { setUploading(false); }
-  };
-
 
   const colH  = editRc.isKurang?"#1e3a8a":editRc.isLebih?"#4c1d95":"#065f46";
   const bgH   = editRc.isKurang?"#dbeafe":editRc.isLebih?"#ede9fe":"#ecfdf5";
@@ -2206,24 +2152,19 @@ function OerReconBox({ trx, rc, isFin, isOwner, onAction }) {
 
   return (
     <div style={{marginBottom:16,border:"2px solid",borderColor:bdH,borderRadius:"var(--r2)",overflow:"hidden"}}>
-      {/* Header */}
       <div style={{padding:"9px 14px",background:bgH,fontWeight:800,fontSize:12,color:colH,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
         <span>📊 Rekonsiliasi CA vs OER</span>
         <div style={{display:"flex",gap:6,alignItems:"center"}}>
           {editRc.isKurang&&<span style={{background:"#1e40af",color:"white",padding:"2px 10px",borderRadius:20,fontSize:11}}>KURANG BAYAR</span>}
           {editRc.isLebih&&<span style={{background:"#7c3aed",color:"white",padding:"2px 10px",borderRadius:20,fontSize:11}}>LEBIH BAYAR</span>}
           {editRc.isLunas&&<span style={{background:"#059669",color:"white",padding:"2px 10px",borderRadius:20,fontSize:11}}>LUNAS</span>}
-          {/* Finance: tombol edit OER — hanya kalau belum settled & belum awaiting/confirmed */}
           {isFin && !trx.settled && !["awaiting_confirm","employee_confirmed","settled"].includes(trx.status) && (
-            <button className="btn bo sm" onClick={()=>setEditMode(v=>!v)} style={{fontSize:10,padding:"2px 8px"}}>
-              {editMode ? "Batal" : "✏️ Edit OER"}
-            </button>
+            <button className="btn bo sm" onClick={()=>setEditMode(v=>!v)} style={{fontSize:10,padding:"2px 8px"}}>{editMode ? "Batal" : "✏️ Edit OER"}</button>
           )}
         </div>
       </div>
 
       <div style={{padding:"12px 14px"}}>
-        {/* Edit mode — tampilkan input per kategori */}
         {editMode && isFin ? (
           <>
             <div style={{marginBottom:10,borderRadius:"var(--r3)",overflow:"hidden",border:"1px solid var(--ln)"}}>
@@ -2231,8 +2172,7 @@ function OerReconBox({ trx, rc, isFin, isOwner, onAction }) {
               {items.map((it,i)=>(
                 <div key={i} style={{display:"flex",alignItems:"center",padding:"7px 12px",borderBottom:i<items.length-1?"1px solid var(--ln)":"none",gap:10}}>
                   <span style={{flex:2,fontSize:12,color:"var(--i2)"}}>{it.cat}</span>
-                  <input type="number" value={it.amt} onChange={e=>setAmt(i,e.target.value)} placeholder="0" min="0"
-                    style={{flex:1,padding:"5px 8px",border:"1px solid var(--ln)",borderRadius:6,fontSize:12,textAlign:"right"}}/>
+                  <input type="number" value={it.amt} onChange={e=>setAmt(i,e.target.value)} placeholder="0" min="0" style={{flex:1,padding:"5px 8px",border:"1px solid var(--ln)",borderRadius:6,fontSize:12,textAlign:"right"}}/>
                 </div>
               ))}
               <div style={{display:"flex",justifyContent:"space-between",padding:"10px 12px",background:bgH,borderTop:"2px solid "+bdH}}>
@@ -2241,22 +2181,6 @@ function OerReconBox({ trx, rc, isFin, isOwner, onAction }) {
               </div>
             </div>
             <textarea value={oerNote} onChange={e=>setOerNote(e.target.value)} placeholder="Catatan koreksi OER..." rows={2} style={{marginBottom:9}}/>
-            {/* Preview rekonsiliasi setelah edit */}
-            {editTotal>0&&(
-              <div style={{padding:"10px 12px",marginBottom:10,borderRadius:"var(--r3)",border:"1px solid "+bdH,background:bgH}}>
-                <div style={{display:"flex",justifyContent:"space-between",fontSize:12,marginBottom:3}}>
-                  <span>CA Dicairkan</span><span style={{fontWeight:700}}>{rp(trx.amount)}</span>
-                </div>
-                <div style={{display:"flex",justifyContent:"space-between",fontSize:12,marginBottom:4}}>
-                  <span>Total OER (dikoreksi)</span><span style={{fontWeight:700}}>{rp(editTotal)}</span>
-                </div>
-                <div style={{height:1,background:bdH,margin:"6px 0"}}/>
-                <div style={{display:"flex",justifyContent:"space-between",fontSize:14,fontWeight:800,color:colV}}>
-                  <span>{editRc.isKurang?"Perusahaan bayar ke karyawan":editRc.isLebih?"Karyawan kembalikan":"Lunas pas ✓"}</span>
-                  <span>{rp(Math.abs(editRc.selisih))}</span>
-                </div>
-              </div>
-            )}
             <div style={{display:"flex",gap:8}}>
               <button className="btn bg" onClick={saveEditedOer} disabled={editTotal===0}><Ic n="check" s={13}/>Simpan Koreksi</button>
               <button className="btn bo" onClick={()=>setEditMode(false)}>Batal</button>
@@ -2264,14 +2188,12 @@ function OerReconBox({ trx, rc, isFin, isOwner, onAction }) {
           </>
         ) : (
           <>
-            {/* View mode — tampilkan summary */}
+            {/* Tampilan Summary */}
             <div style={{display:"flex",justifyContent:"space-between",marginBottom:6,fontSize:13}}>
-              <span style={{color:"var(--i3)"}}>CA Dicairkan</span>
-              <span style={{fontWeight:700}}>{rp(rc.ca)}</span>
+              <span style={{color:"var(--i3)"}}>CA Dicairkan</span><span style={{fontWeight:700}}>{rp(rc.ca)}</span>
             </div>
             <div style={{display:"flex",justifyContent:"space-between",marginBottom:6,fontSize:13}}>
-              <span style={{color:"var(--i3)"}}>Total Biaya OER</span>
-              <span style={{fontWeight:700}}>{rp(rc.oer)}</span>
+              <span style={{color:"var(--i3)"}}>Total Biaya OER</span><span style={{fontWeight:700}}>{rp(rc.oer)}</span>
             </div>
             <div style={{height:1,background:"var(--ln)",margin:"8px 0"}}/>
             <div style={{display:"flex",justifyContent:"space-between",fontSize:14}}>
@@ -2280,114 +2202,81 @@ function OerReconBox({ trx, rc, isFin, isOwner, onAction }) {
               </span>
               <span style={{fontWeight:800,fontSize:16,color:colV}}>{rp(Math.abs(rc.selisih))}</span>
             </div>
-            {trx.financeNote&&trx.settled&&(
-              <div style={{marginTop:8,padding:"7px 10px",background:"var(--ln2)",borderRadius:6,fontSize:11,color:"var(--i3)"}}>
-                📋 {trx.financeNote}
-              </div>
-            )}
-            {trx.oerCategories&&trx.oerCategories.length>0&&(
-              <details style={{marginTop:10}}>
-                <summary style={{fontSize:11,color:"var(--i3)",cursor:"pointer"}}>Lihat rincian OER</summary>
-                <div style={{marginTop:7}}>
-                  {trx.oerCategories.map((oc,i)=>(
-                    <div key={i} style={{display:"flex",justifyContent:"space-between",fontSize:12,padding:"4px 0",borderBottom:"1px solid var(--ln)"}}>
-                      <span style={{color:"var(--i3)"}}>{oc.cat}</span><span style={{fontWeight:600}}>{rp(oc.amt)}</span>
-                    </div>
-                  ))}
-                </div>
-              </details>
-            )}
 
-            {/* Finance: LEBIH BAYAR — langsung settle tanpa konfirmasi karyawan */}
-            {isFin && !trx.settled && trx.status==="lebih_bayar" && (
-              <div style={{marginTop:12,padding:"14px",background:"#f5f3ff",borderRadius:"var(--r2)",border:"2px solid #c4b5fd"}}>
-                <p style={{fontSize:13,fontWeight:800,color:"#4c1d95",marginBottom:4}}>💜 Lebih Bayar — Finance Transfer ke Karyawan</p>
-                <div style={{padding:"10px 12px",background:"#ede9fe",borderRadius:"var(--r3)",border:"1px solid #c4b5fd",marginBottom:12}}>
-                  <p style={{fontSize:12,fontWeight:700,color:"#4c1d95"}}>
-                    Transfer {rp(Math.abs(rc.selisih))} ke {trx.submitter}
+            {/* Finance: SETTLEMENT LANGSUNG (Untuk Kurang Bayar & Lebih Bayar) */}
+            {isFin && !trx.settled && (trx.status==="lebih_bayar" || trx.status==="kurang_bayar") && (
+              <div style={{marginTop:12,padding:"14px",background:trx.status==="lebih_bayar"?"#f5f3ff":"#eff6ff",borderRadius:"var(--r2)",border:`2px solid ${trx.status==="lebih_bayar"?"#c4b5fd":"#93c5fd"}`}}>
+                <p style={{fontSize:13,fontWeight:800,color:trx.status==="lebih_bayar"?"#4c1d95":"#1e3a8a",marginBottom:4}}>
+                  {trx.status==="lebih_bayar" ? "💜 Lebih Bayar — Terima Kembalian" : "💙 Kurang Bayar — Transfer ke Karyawan"}
+                </p>
+                <div style={{padding:"10px 12px",background:trx.status==="lebih_bayar"?"#ede9fe":"#dbeafe",borderRadius:"var(--r3)",border:`1px solid ${trx.status==="lebih_bayar"?"#c4b5fd":"#93c5fd"}`,marginBottom:12}}>
+                  <p style={{fontSize:12,fontWeight:700,color:trx.status==="lebih_bayar"?"#4c1d95":"#1e40af"}}>
+                    {trx.status==="lebih_bayar"
+                      ? `Terima pengembalian dana ${rp(Math.abs(rc.selisih))} dari ${trx.submitter}`
+                      : `Transfer ${rp(Math.abs(rc.selisih))} ke ${trx.submitter}`
+                    }
                   </p>
-                  {(trx.bankAccount||trx.accountName) ? (
-                    <p style={{fontSize:11,fontFamily:"monospace",color:"#6d28d9",marginTop:3}}>
-                      {trx.bankAccount||"—"} a.n. {trx.accountName||"—"}
-                    </p>
+                  {trx.status==="lebih_bayar" ? (
+                    <p style={{fontSize:11,color:"#6d28d9",marginTop:3}}>Pastikan karyawan sudah mengirim bukti transfer via WhatsApp.</p>
                   ) : (
-                    <p style={{fontSize:11,color:"#92400e",marginTop:3}}>⚠️ Karyawan belum isi info rekening</p>
+                    (trx.bankAccount||trx.accountName) ? (
+                      <p style={{fontSize:11,fontFamily:"monospace",color:"#1e40af",marginTop:3}}>
+                        {trx.bankAccount||"—"} a.n. {trx.accountName||"—"}
+                      </p>
+                    ) : (
+                      <p style={{fontSize:11,color:"#92400e",marginTop:3}}>⚠️ Karyawan belum isi info rekening</p>
+                    )
                   )}
                 </div>
                 <div style={{marginBottom:10}}>
                   <label style={{fontSize:11,fontWeight:700,color:"#374151",display:"block",marginBottom:3}}>Bank Voucher No. <span style={{color:"#dc2626"}}>*</span></label>
-                  <input value={settleLBVoucher} onChange={e=>setSettleLBVoucher(e.target.value)} placeholder="BV-2026-001" style={{marginBottom:0,borderColor:"#c4b5fd"}}/>
+                  <input value={settleVoucher} onChange={e=>setSettleVoucher(e.target.value)} placeholder="BV-2026-001" style={{marginBottom:0,borderColor:trx.status==="lebih_bayar"?"#c4b5fd":"#93c5fd"}}/>
                 </div>
-                <textarea value={settleLBNote} onChange={e=>setSettleLBNote(e.target.value)} placeholder="No. referensi transfer / catatan (opsional)..." rows={2} style={{marginBottom:9}}/>
-                <button className="btn bg" onClick={doSettleLebihBayar}
-                  disabled={settlingLB||!settleLBVoucher.trim()}
-                  style={{background:"#7c3aed",width:"100%"}}>
-                  {settlingLB?<span className="sp2"/>:<Ic n="check" s={13}/>}
-                  Konfirmasi Sudah Transfer — Selesaikan
+                <textarea value={settleNote} onChange={e=>setSettleNote(e.target.value)} placeholder="No. referensi transfer / catatan (opsional)..." rows={2} style={{marginBottom:9}}/>
+                <button className="btn bg" onClick={doSettle}
+                  disabled={settling||!settleVoucher.trim()}
+                  style={{background:trx.status==="lebih_bayar"?"#7c3aed":"#2563eb",width:"100%"}}>
+                  {settling?<span className="sp2"/>:<Ic n="check" s={13}/>}
+                  {trx.status==="lebih_bayar" ? "Konfirmasi Dana Diterima — Selesaikan" : "Konfirmasi Sudah Transfer — Selesaikan"}
                 </button>
-                {!settleLBVoucher.trim()&&<p style={{fontSize:10.5,color:"#dc2626",marginTop:5}}>* Isi Bank Voucher No. untuk filing</p>}
+                {!settleVoucher.trim()&&<p style={{fontSize:10.5,color:"#dc2626",marginTop:5}}>* Isi Bank Voucher No. untuk filing</p>}
               </div>
             )}
 
-            {/* Finance: KURANG BAYAR — kirim ke karyawan untuk konfirmasi */}
-            {isFin && !trx.settled && trx.status==="kurang_bayar" && (
-              <button className="btn bp" onClick={sendForConfirmation} style={{marginTop:12,width:"100%"}}>
-                <Ic n="send" s={13}/>Kirim ke Karyawan untuk Konfirmasi
-              </button>
-            )}
-
-            {/* Employee: konfirmasi atau keberatan (hanya kurang_bayar) */}
-            {isOwner && trx.status==="awaiting_confirm" && rc.isLebih && (
-              <div style={{marginTop:10,padding:"11px 14px",background:"#eff6ff",borderRadius:"var(--r3)",border:"1px solid #93c5fd"}}>
-                <p style={{fontSize:12,fontWeight:700,color:"#1e3a8a"}}>ℹ️ Finance sedang memproses transfer ke rekeningmu — tidak perlu aksi apa-apa dari kamu.</p>
-              </div>
-            )}
-            {isOwner && trx.status==="awaiting_confirm" && rc.isKurang && (
-              <div style={{marginTop:12}}>
-                {/* Header konfirmasi — kurang bayar: perusahaan akan transfer ke karyawan */}
-                <div style={{padding:"12px 14px",background:"linear-gradient(135deg,#1e40af,#3b82f6)",borderRadius:"var(--r3)",marginBottom:10,color:"white"}}>
-                  <p style={{fontSize:12,fontWeight:800,marginBottom:4}}>📩 Finance meminta konfirmasi nominal</p>
-                  <p style={{fontSize:13,fontWeight:700}}>
-                    ✅ Perusahaan akan transfer {rp(Math.abs(rc.selisih))} ke rekeningmu
-                  </p>
-                  <p style={{fontSize:11,color:"rgba(255,255,255,0.8)",marginTop:4}}>Konfirmasi jika nominal di atas sudah sesuai.</p>
+            {/* Employee: LEBIH BAYAR — instruksi kirim bukti WA */}
+            {isOwner && !trx.settled && trx.status==="lebih_bayar" && (
+              <div style={{marginTop:12,padding:"12px 14px",background:"#fff7ed",borderRadius:"var(--r3)",border:"1px solid #fdba74"}}>
+                <p style={{fontSize:12,fontWeight:800,color:"#c2410c",marginBottom:4}}>⚠️ Pengembalian Sisa Dana CA</p>
+                <p style={{fontSize:12,color:"#9a3412"}}>
+                  Terdapat sisa dana (Lebih Bayar) sebesar <strong style={{color:"#c2410c"}}>{rp(Math.abs(rc.selisih))}</strong>.
+                </p>
+                <div style={{marginTop:8,padding:"8px 10px",background:"#ffedd5",borderRadius:"var(--r3)"}}>
+                  <p style={{fontSize:11,fontWeight:700,color:"#9a3412"}}>Instruksi:</p>
+                  <ol style={{fontSize:11,color:"#9a3412",marginLeft:16,marginTop:4}}>
+                    <li>Transfer sisa dana tersebut ke rekening perusahaan.</li>
+                    <li>Kirimkan foto bukti transfer langsung ke <strong>WhatsApp Finance</strong>.</li>
+                  </ol>
+                  <p style={{fontSize:11,color:"#c2410c",marginTop:6,fontStyle:"italic"}}>* Finance akan menyelesaikan pelunasan setelah bukti diterima.</p>
                 </div>
-
-                {/* Tombol konfirmasi & keberatan */}
-                <button className="btn bg" onClick={confirmOer} disabled={uploading} style={{width:"100%",marginBottom:8}}>
-                  {uploading ? <span className="sp2"/> : <Ic n="check" s={13}/>}
-                  {uploading ? "Menyimpan..." : "Saya Setuju & Konfirmasi Nominal"}
-                </button>
               </div>
             )}
 
-            {/* Employee: sudah konfirmasi */}
+            {/* Employee: KURANG BAYAR — info bahwa finance akan transfer */}
+            {isOwner && !trx.settled && (trx.status==="kurang_bayar" || trx.status==="awaiting_confirm") && (
+              <div style={{marginTop:12,padding:"12px 14px",background:"linear-gradient(135deg,#1e40af,#3b82f6)",borderRadius:"var(--r3)",marginBottom:10,color:"white"}}>
+                <p style={{fontSize:12,fontWeight:800,marginBottom:4}}>⏳ Menunggu Transfer Finance</p>
+                <p style={{fontSize:13,fontWeight:700}}>
+                  ✅ Perusahaan akan mentransfer {rp(Math.abs(rc.selisih))} ke rekeningmu.
+                </p>
+                <p style={{fontSize:11,color:"rgba(255,255,255,0.8)",marginTop:4}}>Tidak ada aksi yang perlu kamu lakukan. Transaksi akan otomatis lunas setelah Finance melakukan transfer.</p>
+              </div>
+            )}
+
+            {/* Tetap merender info jika data lama punya status employee_confirmed */}
             {isOwner && trx.status==="employee_confirmed" && (
               <div style={{marginTop:10,borderRadius:"var(--r3)",overflow:"hidden",border:"1px solid #a7f3d0"}}>
                 <div style={{padding:"10px 12px",background:"#f0fdf4"}}>
-                  <p style={{fontSize:12,fontWeight:800,color:"#065f46"}}>✓ Kamu sudah mengkonfirmasi — menunggu Finance menyelesaikan</p>
-                </div>
-                {trx.transferProof&&(
-                  <div>
-                    <div style={{padding:"6px 12px",background:"#ecfdf5",borderTop:"1px solid #a7f3d0"}}>
-                      <p style={{fontSize:11,fontWeight:700,color:"#059669",marginBottom:4}}>📎 Bukti Transfer Kamu:</p>
-                    </div>
-                    <img src={trx.transferProof} alt="bukti transfer" style={{width:"100%",maxHeight:200,objectFit:"contain",display:"block",background:"#fafafa"}}/>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* History bukti transfer — tampil di semua role setelah settled jika ada */}
-            {trx.transferProof && trx.settled && (
-              <div style={{marginTop:10,borderRadius:"var(--r3)",overflow:"hidden",border:"1px solid #ddd6fe"}}>
-                <div style={{padding:"8px 12px",background:"#f5f3ff",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                  <p style={{fontSize:11,fontWeight:700,color:"#7c3aed"}}>📎 Riwayat Bukti Transfer (Lebih Bayar)</p>
-                  <span style={{fontSize:10,color:"#9ca3af"}}>Tersimpan di database</span>
-                </div>
-                <img src={trx.transferProof} alt="bukti transfer" style={{width:"100%",maxHeight:220,objectFit:"contain",display:"block",background:"#fafafa"}}/>
-                <div style={{padding:"6px 12px",background:"#f5f3ff",borderTop:"1px solid #ede9fe"}}>
-                  <p style={{fontSize:10.5,color:"#6d28d9"}}>Dikonfirmasi oleh karyawan · Diterima Finance · {fd(trx.settledDate)}</p>
+                  <p style={{fontSize:12,fontWeight:800,color:"#065f46"}}>✓ Dikonfirmasi — menunggu Finance menyelesaikan</p>
                 </div>
               </div>
             )}
@@ -2434,14 +2323,14 @@ function DetailModal({ trx, user, onClose, onAction, onEdit }) {
   const [transferDate, setTransferDate] = useState(trx.transferDate||"");
 
   const settle = () => {
-    // Dipakai hanya untuk kurang_bayar setelah employee_confirmed
+    // Dipakai hanya untuk kurang_bayar setelah employee_confirmed (legacy)
     onAction(trx.id, "settle", note, trx.type);
     if (isReady()) SB.update(trx.id, {
       status:"settled", settled:true, settled_date:today(),
       finance_note:note||"",
     }).catch(e=>console.error("settle sync error:",e));
   };
-  // OER submission state (for employee submitting OER against CA)
+
   const [oerItems, setOerItems] = useState(OER_CATS.map(cat=>({cat,amt:""})));
   const [oerNote, setOerNote]   = useState("");
   const [showOerForm, setShowOerForm] = useState(false);
@@ -2455,7 +2344,6 @@ function DetailModal({ trx, user, onClose, onAction, onEdit }) {
       oerCategories: oerItems.filter(it=>parseFloat(it.amt)>0).map(it=>({cat:it.cat,amt:parseFloat(it.amt)})),
       oerNote, oerDate: today(),
     };
-    // UI update INSTAN — Supabase sync di background
     onAction(trx.id, "oer_submitted", oerData);
     if (isReady()) API.submitOer(trx.id, oerData, trx.amount)
       .catch(e=>console.error("oer sync error:",e));
@@ -2473,7 +2361,6 @@ function DetailModal({ trx, user, onClose, onAction, onEdit }) {
     {ok:["doc_complete","approved","processing","paid",...OER_STATUSES].includes(trx.status), icon:"check", title:"Dokumen Lengkap (GA)", sub:trx.gaNote||"–", col:"var(--gn)"},
     {ok:["processing","paid",...OER_STATUSES].includes(trx.status), icon:"money", title:"Diproses Finance", sub:"", col:"var(--pu)"},
     {ok:trx.status==="paid"||trx.status==="awaiting_oer", icon:"check", title:"Pembayaran CA Pertama", sub:trx.status==="awaiting_oer"?`Dibayar · ${fd(trx.settledDate)}`:"", col:"var(--gn)"},
-    // OER phase steps (only shown for CA)
     ...(trx.type==="cash_advance" ? [
       {ok:isOERPhase, icon:"send", title:"OER Disubmit Karyawan", sub:trx.oerDate?`${fd(trx.oerDate)} · ${rp(trx.oerAmount||0)}`:"", col:"#ca8a04"},
       {ok:["oer_doc_received","oer_doc_complete","kurang_bayar","lebih_bayar","awaiting_confirm","employee_confirmed","settled"].includes(trx.status), icon:"user", title:"OER Diterima Admin JKT", sub:"", col:"var(--tl)"},
@@ -2506,12 +2393,7 @@ function DetailModal({ trx, user, onClose, onAction, onEdit }) {
         </div>
         <div className="mb2">
           {editing ? (
-            <EditForm
-              trx={trx}
-              user={user}
-              onSave={(updated) => { setEditing(false); onEdit(updated); }}
-              onCancel={() => setEditing(false)}
-            />
+            <EditForm trx={trx} user={user} onSave={(updated) => { setEditing(false); onEdit(updated); }} onCancel={() => setEditing(false)} />
           ) : (
             <>
               <div style={{display:"flex",flexWrap:"wrap",gap:7,alignItems:"center",padding:"9px 13px",background:"var(--ln2)",borderRadius:"var(--r2)",marginBottom:16}}>
@@ -2555,23 +2437,6 @@ function DetailModal({ trx, user, onClose, onAction, onEdit }) {
                 </div>
               </div>
 
-              {trx.transferProof && (
-                <div style={{marginBottom:16,borderRadius:"var(--r2)",overflow:"hidden",border:"2px solid #a78bfa"}}>
-                  <div style={{padding:"8px 14px",background:"#f5f3ff",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                    <span style={{fontSize:12,fontWeight:800,color:"#7c3aed"}}>Bukti Transfer Karyawan</span>
-                    <a href={trx.transferProof} download={"bukti-"+trx.id+".jpg"}
-                      style={{fontSize:11,color:"#7c3aed",fontWeight:700,textDecoration:"none",
-                        padding:"3px 8px",background:"#ede9fe",borderRadius:5}}>
-                      Download
-                    </a>
-                  </div>
-                  <img src={trx.transferProof} alt="bukti transfer" style={{width:"100%",maxHeight:280,objectFit:"contain",display:"block",background:"#fafafa"}}/>
-                  <div style={{padding:"6px 14px",background:"#faf5ff",fontSize:11,color:"#7c3aed",fontWeight:600}}>
-                    Diupload karyawan saat konfirmasi OER
-                  </div>
-                </div>
-              )}
-
               <div style={{border:"1px solid var(--ln)",borderRadius:"var(--r2)",overflow:"hidden",marginBottom:16}}>
                 <div style={{background:"var(--ln2)",padding:"8px 14px",fontSize:10.5,fontWeight:800,color:"var(--i3)",textTransform:"uppercase",letterSpacing:".06em"}}>Rincian Biaya</div>
                 {trx.categories.map((c,i)=>(
@@ -2588,8 +2453,8 @@ function DetailModal({ trx, user, onClose, onAction, onEdit }) {
               {trx.notes&&<div className="al at mb4"><Ic n="bell" s={13} c="var(--tl)"/><span>{trx.notes}</span></div>}
               {trx.isLate&&<div className="al ae mb4"><Ic n="alert" s={13} c="#dc2626"/><span><strong>⚠ Terlambat mengajukan</strong> — melewati batas 5 hari kerja setelah trip selesai ({fd(trx.dateEnd)}). Pengajuan tetap dapat diproses seperti biasa.</span></div>}
 
-              {/* ── RIWAYAT PEMBAYARAN & BUKTI ── */}
-              {(trx.bankVoucherNo||trx.docNo||trx.sapText||trx.transferProof) && (
+              {/* ── RIWAYAT PEMBAYARAN ── */}
+              {(trx.bankVoucherNo||trx.docNo||trx.sapText) && (
                 <div style={{border:"1px solid #e0e7ff",borderRadius:"var(--r2)",overflow:"hidden",marginBottom:16}}>
                   <div style={{background:"#eef2ff",padding:"8px 14px",fontSize:10.5,fontWeight:800,color:"#3730a3",textTransform:"uppercase",letterSpacing:".06em"}}>
                     📋 Riwayat Pembayaran
@@ -2620,18 +2485,6 @@ function DetailModal({ trx, user, onClose, onAction, onEdit }) {
                       </div>
                     )}
                   </div>
-                  {/* Bukti transfer karyawan */}
-                  {trx.transferProof&&(
-                    <div>
-                      <div style={{padding:"7px 14px",background:"#f5f3ff",borderTop:"1px solid #e0e7ff",fontSize:11,fontWeight:700,color:"#7c3aed"}}>
-                        📎 Bukti Transfer Karyawan
-                      </div>
-                      <div style={{padding:10,background:"#fafafa",textAlign:"center"}}>
-                        <img src={trx.transferProof} alt="bukti transfer" style={{maxWidth:"100%",maxHeight:280,objectFit:"contain",borderRadius:6,border:"1px solid #e5e7eb"}}/>
-                        <p style={{fontSize:10,color:"var(--i3)",marginTop:4}}>Diupload oleh {trx.submitter}</p>
-                      </div>
-                    </div>
-                  )}
                 </div>
               )}
 
@@ -2658,7 +2511,6 @@ function DetailModal({ trx, user, onClose, onAction, onEdit }) {
               {isFin&&trx.status==="processing"&&(
                 <div style={{marginTop:16,padding:14,background:"var(--ln2)",borderRadius:"var(--r2)",border:"1px solid var(--ln)"}}>
                   <p style={{fontSize:13,fontWeight:700,marginBottom:9}}>Konfirmasi Pembayaran</p>
-                  {/* Info rekening karyawan */}
                   {(trx.bankAccount||trx.accountName) ? (
                     <div style={{marginBottom:12,padding:"10px 12px",background:"#eff6ff",border:"1px solid #93c5fd",borderRadius:"var(--r3)"}}>
                       <p style={{fontSize:11,fontWeight:700,color:"#1e3a8a",marginBottom:4}}>💳 Transfer ke:</p>
@@ -2685,7 +2537,7 @@ function DetailModal({ trx, user, onClose, onAction, onEdit }) {
                     <input value={sapText} onChange={e=>setSapText(e.target.value)} placeholder="Deskripsi transaksi dari SAP" style={{marginBottom:0}}/>
                   </div>
                   <div className="fg mb3">
-                    <label className="fl" style={{fontSize:12}}>Estimasi Tanggal Masuk Rekening <span style={{color:"var(--i3)",fontWeight:400}}>(opsional — ditampilkan ke karyawan)</span></label>
+                    <label className="fl" style={{fontSize:12}}>Estimasi Tanggal Masuk Rekening <span style={{color:"var(--i3)",fontWeight:400}}>(opsional)</span></label>
                     <input type="date" value={transferDate} onChange={e=>setTransferDate(e.target.value)} style={{marginBottom:0}}/>
                   </div>
                   <textarea value={note} onChange={e=>setNote(e.target.value)} placeholder="Catatan tambahan (opsional)..." rows={2} style={{marginBottom:9}}/>
@@ -2693,7 +2545,6 @@ function DetailModal({ trx, user, onClose, onAction, onEdit }) {
                   {(!voucherNo.trim()||!docNo.trim()) && <p style={{fontSize:11,color:"var(--am)",marginTop:6}}>⚠️ Isi Bank Voucher No. dan Doc No. terlebih dahulu</p>}
                 </div>
               )}
-              {/* Employee: submit OER for this CA */}
               {isOwner && trx.type==="cash_advance" && ["paid","awaiting_oer"].includes(trx.status) && !trx.oerAmount && !trx.oerDate && (
                 <div style={{marginTop:16,padding:14,background:"#fef9c3",borderRadius:"var(--r2)",border:"2px solid #ca8a04"}}>
                   <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
@@ -2708,8 +2559,7 @@ function DetailModal({ trx, user, onClose, onAction, onEdit }) {
                         {oerItems.map((it,i)=>(
                           <div key={i} style={{display:"flex",alignItems:"center",padding:"7px 12px",borderBottom:i<oerItems.length-1?"1px solid #fef3c7":"none",gap:10}}>
                             <span style={{flex:2,fontSize:12,color:"var(--i2)"}}>{it.cat}</span>
-                            <input type="number" value={it.amt} onChange={e=>setOi(i,e.target.value)} placeholder="0" min="0"
-                              style={{flex:1,padding:"5px 8px",border:"1px solid #fde68a",borderRadius:6,fontSize:12,textAlign:"right",fontFamily:"inherit"}}/>
+                            <input type="number" value={it.amt} onChange={e=>setOi(i,e.target.value)} placeholder="0" min="0" style={{flex:1,padding:"5px 8px",border:"1px solid #fde68a",borderRadius:6,fontSize:12,textAlign:"right",fontFamily:"inherit"}}/>
                           </div>
                         ))}
                         {oerTotal>0&&(
@@ -2743,7 +2593,7 @@ function DetailModal({ trx, user, onClose, onAction, onEdit }) {
                 </div>
               )}
 
-              {/* Finance: settle — hanya setelah employee konfirmasi (kurang_bayar) */}
+              {/* Legacy Block for legacy transactions stuck in employee_confirmed status */}
               {isFin && trx.type==="cash_advance" && rc && !trx.settled && trx.status==="employee_confirmed" && (
                 <div style={{marginTop:16,padding:14,borderRadius:"var(--r2)",border:"2px solid #93c5fd",background:"#eff6ff"}}>
                   <p style={{fontSize:13,fontWeight:800,marginBottom:4,color:"#1e3a8a"}}>
@@ -2754,11 +2604,6 @@ function DetailModal({ trx, user, onClose, onAction, onEdit }) {
                     <p style={{fontSize:13,fontWeight:700,color:"#1e40af",marginTop:2}}>
                       Transfer {rp(Math.abs(rc.selisih))} ke {trx.submitter}
                     </p>
-                    {(trx.bankAccount||trx.accountName)&&(
-                      <p style={{fontSize:11,fontFamily:"monospace",color:"#1e40af",marginTop:2}}>
-                        {trx.bankAccount||"—"} a.n. {trx.accountName||"—"}
-                      </p>
-                    )}
                   </div>
                   <textarea value={note} onChange={e=>setNote(e.target.value)}
                     placeholder="Catatan / referensi transfer (opsional)..."
@@ -2769,14 +2614,7 @@ function DetailModal({ trx, user, onClose, onAction, onEdit }) {
                   </button>
                 </div>
               )}
-              {/* Finance: menunggu konfirmasi karyawan — hanya untuk kurang_bayar */}
-              {isFin && trx.type==="cash_advance" && rc && !trx.settled && trx.status==="awaiting_confirm" && rc.isKurang && (
-                <div style={{marginTop:16,padding:14,background:"#fff7ed",borderRadius:"var(--r2)",border:"2px solid #fb923c"}}>
-                  <p style={{fontSize:13,fontWeight:800,color:"#c2410c",marginBottom:4}}>⏳ Menunggu konfirmasi karyawan</p>
-                  <p style={{fontSize:12,color:"#9a3412"}}>Nominal sudah dikirim ke {trx.submitter} untuk dikonfirmasi. Tombol settle akan muncul setelah karyawan menyetujui.</p>
-                </div>
-              )}
-              {/* Finance: karyawan keberatan */}
+
               {isFin && trx.type==="cash_advance" && trx.status==="disputed" && (
                 <div style={{marginTop:16,padding:14,background:"var(--rdb)",borderRadius:"var(--r2)",border:"2px solid var(--rdbd)"}}>
                   <p style={{fontSize:13,fontWeight:800,color:"var(--rd)",marginBottom:4}}>⚠️ Karyawan mengajukan keberatan</p>
@@ -2824,7 +2662,6 @@ export default function App() {
           const enriched = {...d, bankAccount: acc?.bank_account||"", accountName: acc?.account_name||""};
           return withLateFlagOnly(enriched);
         }));
-        // Sync bank info ke user state saat login
         setUser(prev=>{
           if (!prev || prev.role!=="employee") return prev;
           const myAcc = accMap[prev.username] || accMap[prev.name];
@@ -2849,7 +2686,6 @@ export default function App() {
     const [rows, accs] = await Promise.all([API.getAll(), API.getAllAccounts()]);
     if (Array.isArray(rows) && rows.length >= 0) {
       const accMap = {};
-      // Index by both name AND username for robust lookup
       (accs||[]).forEach(a=>{
         accMap[a.name] = a;
         if (a.username) accMap[a.username] = a;
@@ -2859,7 +2695,6 @@ export default function App() {
         const enriched = {...d, bankAccount: acc?.bank_account||"", accountName: acc?.account_name||""};
         return withLateFlagOnly(enriched);
       }));
-      // Sync bank info ke user state jika karyawan (supaya Dashboard selalu up-to-date)
       setUser(prev=>{
         if (!prev || prev.role!=="employee") return prev;
         const myAcc = accMap[prev.username] || accMap[prev.name];
@@ -2869,7 +2704,6 @@ export default function App() {
     }
   };
 
-  // Auto-reload saat user balik ke browser tab / buka app lagi dari background
   useEffect(() => {
     if (!isReady()) return;
     const onVisible = () => { if (document.visibilityState === "visible") reloadData(); };
@@ -2877,7 +2711,6 @@ export default function App() {
     return () => document.removeEventListener("visibilitychange", onVisible);
   }, [user]);
 
-  // Polling setiap 5 menit (300000ms) agar server tidak overload
   useEffect(() => {
     if (!isReady() || !user) return;
     const timer = setInterval(() => reloadData(), 300000);
@@ -2885,17 +2718,14 @@ export default function App() {
   }, [user]);
 
   const handleAction = (id, action, noteOrData, trxType, voucherNo, docNo, sapText, transferDate) => {
-    // Optimistic update dulu — UI langsung berubah tanpa tunggu Sheets
     setData(prev=>prev.map(d=>{
       if (d.id!==id) return d;
       if (action==="oer_submitted") {
         const oer = noteOrData;
-        // OER masuk antrian Admin JKT — Finance baru bisa proses setelah GA approve
         return {...d, oerAmount:oer.oerAmount, oerCategories:oer.oerCategories, oerNote:oer.oerNote, oerDate:oer.oerDate, status:"oer_doc_pending"};
       }
       if (action==="oer_doc_received") return {...d, status:"oer_doc_received", adminJktName:noteOrData||d.adminJktName};
       if (action==="oer_doc_complete") {
-        // GA approve OER doc — now calculate selisih and set final status
         const selisih = (d.oerAmount||0) - d.amount;
         const finalStatus = selisih > 0 ? "kurang_bayar" : selisih < 0 ? "lebih_bayar" : "settled";
         return {...d, status:finalStatus, gaOerNote:noteOrData||"", settled:finalStatus==="settled"};
@@ -2909,7 +2739,7 @@ export default function App() {
       }
       if (action==="send_confirm")  return {...d, status:"awaiting_confirm"};
       if (action==="settle_lebih_bayar") return {...d, status:"settled", settled:true, settledDate:today(), financeNote:noteOrData||"", bankVoucherNo:voucherNo||d.bankVoucherNo||"", docNo:docNo||d.docNo||"", sapText:sapText||d.sapText||""};
-      if (action==="emp_confirm")   return {...d, status:"employee_confirmed", transferProof: noteOrData?.transferProof||d.transferProof||""};
+      if (action==="emp_confirm")   return {...d, status:"employee_confirmed"};
       if (action==="emp_dispute")   return {...d, status:"disputed", financeNote:noteOrData};
       if (action==="doc_received_lk")  return {...d, status:"doc_received_lk", adminLkName:noteOrData};
       if (action==="doc_sent_jkt")     return {...d, status:"doc_sent_jkt"};
@@ -2928,10 +2758,10 @@ export default function App() {
       approve:"✓ Pengajuan disetujui", reject:"Pengajuan ditolak",
       process:"✓ Mulai diproses", pay:"✓ Pembayaran dikonfirmasi",
       settle:"✓ Settlement dikonfirmasi — CA lunas",
-      settle_lebih_bayar:"✓ Lebih bayar diselesaikan — CA lunas",
+      settle_lebih_bayar:"✓ Transaksi CA berhasil dilunasi",
       oer_submitted:"✓ OER berhasil disubmit",
       edit_oer:"✓ OER dikoreksi", send_confirm:"✓ Nominal dikirim ke karyawan untuk konfirmasi",
-      emp_confirm:"✓ Karyawan menyetujui nominal", emp_dispute:"Karyawan mengajukan keberatan",
+      emp_confirm:"✓ Menyetujui nominal", emp_dispute:"Karyawan mengajukan keberatan",
       doc_received_lk:"✓ Dokumen diterima Admin Luar Kota",
       doc_sent_jkt:"✓ Dokumen dikirim ke Jakarta",
       doc_received_jkt:"✓ Dokumen diterima Admin Jakarta",
@@ -2940,10 +2770,8 @@ export default function App() {
       oer_doc_complete:"✓ OER disetujui — rekonsiliasi dimulai",
     };
     showToast(msgs[action]||"Berhasil");
-    // Jangan tutup modal — Finance perlu lanjut ke step berikutnya
     if (["reject","settle","settle_lebih_bayar","emp_confirm","emp_dispute"].includes(action)) setSelId(null);
-    // Sync dari Sheets 1.5 detik setelah aksi — pastikan data konsisten
-    if (isReady()) setTimeout(reloadData, 2000); // sync dari Supabase setelah action
+    if (isReady()) setTimeout(reloadData, 2000);
   };
 
   const handleEdit = (updated) => {
@@ -2951,21 +2779,17 @@ export default function App() {
     showToast("✓ Perubahan disimpan");
   };
 
-  // Filing voucher: update transferTo dari FilingPage
   const handleSaveDoc = (id, patch) => {
     setData(prev => prev.map(d => d.id===id ? {...d,...patch} : d));
     if (isReady() && patch.transferTo !== undefined) {
-      // Update transfer_to langsung ke Supabase
       SB.req("PATCH","transactions",{transfer_to: patch.transferTo},{"id":"eq."+id}).catch(()=>{});
     }
   };
 
   const handleSubmit = async (entry) => {
-    // Tambah ke local state dulu (instan)
     setData(p=>[entry,...p].map(d=>withLateFlagOnly(d)));
     showToast(`✓ ${entry.id} berhasil dikirim ke Admin`);
     setPage("list");
-    // Kemudian reload dari Supabase untuk sync semua user
     if (isReady()) {
       await new Promise(r=>setTimeout(r,500));
       const [rows, accs] = await Promise.all([API.getAll(), API.getAllAccounts()]);
@@ -2990,11 +2814,10 @@ export default function App() {
     admin_lk: [{id:"dashboard",ic:"home",lb:"Dashboard"},{id:"admin_lk_queue",ic:"check",lb:"Antrian Dokumen",bd:data.filter(d=>d.status==="pending").length||null},{id:"list",ic:"list",lb:"Semua Pengajuan"}],
     admin_jkt:[{id:"dashboard",ic:"home",lb:"Dashboard"},{id:"admin_jkt_queue",ic:"check",lb:"Antrian Jakarta",bd:data.filter(d=>["doc_sent_jkt","oer_doc_pending"].includes(d.status)).length||null},{id:"list",ic:"list",lb:"Semua Pengajuan"}],
     ga:       [{id:"dashboard",ic:"home",lb:"Dashboard"},{id:"ga_queue",ic:"check",lb:"Antrian GA",bd:data.filter(d=>["doc_received_jkt","oer_doc_received"].includes(d.status)).length||null},{id:"list",ic:"list",lb:"Semua Pengajuan"}],
-    finance:  [{id:"dashboard",ic:"home",lb:"Dashboard"},{id:"monitor",ic:"chart",lb:"Monitor Finance",bd:aCt||null},{id:"list",ic:"list",lb:"Semua Pengajuan"},{id:"filing",ic:"list",lb:"Filing Voucher"},{id:"overdue",ic:"alert",lb:"CA Outstanding",bd:oCt||null},{id:"settings",ic:"settings",lb:"Pengaturan"}],
+    finance:  [{id:"dashboard",ic:"home",lb:"Dashboard"},{id:"monitor",ic:"chart",lb:"Monitor Finance",bd:aCt||null},{id:"list",ic:"list",lb:"Semua Pengajuan"},{id:"overdue",ic:"alert",lb:"CA Outstanding",bd:oCt||null},{id:"settings",ic:"settings",lb:"Pengaturan"}],
   };
   const TITLES = {dashboard:"Dashboard",submit:"Form Pengajuan",list:"Daftar Pengajuan",approval:"Antrian Approval",admin_lk_queue:"Antrian Admin LK",admin_jkt_queue:"Antrian Admin Jakarta",ga_queue:"Antrian GA",monitor:"Monitor Finance",overdue:"CA Outstanding",settings:"Pengaturan"};
 
-  // Show login if not logged in
   if (!user) return (<><style>{CSS}</style><LoginScreen onLogin={handleLogin}/></>);
 
   return (
@@ -3003,7 +2826,6 @@ export default function App() {
       <div className="app">
         {sideOpen && <div style={{position:"fixed",inset:0,zIndex:199,background:"rgba(0,0,0,.4)"}} onClick={()=>setSideOpen(false)}/>}
 
-        {/* SIDEBAR */}
         <div className={`sb${sideOpen?" open":""}`}>
           <div className="sb-logo"><div className="sb-lh">ReimburseApp</div><div className="sb-ls">Finance System 2026</div></div>
           <div className="sb-u" onClick={handleLogout} title="Klik untuk logout">
@@ -3025,7 +2847,6 @@ export default function App() {
           </nav>
         </div>
 
-        {/* MAIN */}
         <div className="main">
           <div className="bar">
             <button className="btn bo sm" onClick={()=>setSideOpen(o=>!o)}><Ic n="menu" s={15}/></button>
