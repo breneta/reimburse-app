@@ -1096,7 +1096,9 @@ export default function App() {
     <><style>{CSS}</style><div className="app">
       <div className="sb"><div className="sb-logo"><div className="sb-lh">ReimburseApp</div></div><div className="sb-u"><div className="av">{user.avatar}</div><div><div className="sb-un">{user.name}</div><div className="sb-ur">{user.role}</div></div></div>
         <nav className="sb-nav">{(NAV[user.role]||[]).map(i=>(<div key={i.id} className={`nv${page===i.id?" on":""}`} onClick={()=>nav(i.id)}><Ic n={i.ic} s={14}/>{i.lb}</div>))}</nav>
-        <div className="nv" style={{marginTop:"auto",opacity:0.5}} onClick={()=>window.location.reload()}>Log Out</div>
+        <div className="nv" style={{marginTop:"auto", marginBottom:"16px", color:"#fca5a5", opacity:1}} onClick={()=>window.location.reload()}>
+          <Ic n="logout" s={14}/><span>Log Out</span>
+        </div>
       </div>
       <div className="main">
         <div className="bar"><h1 className="bt">{page.toUpperCase().replace("_"," ")}</h1><div className="br"><span className={`cs ${isReady()?"cs-ok":"cs-no"}`}>{isReady()?"Supabase ✓":"Offline"}</span><button className="btn bo sm" onClick={reloadData}>🔄</button></div></div>
