@@ -840,7 +840,7 @@ function GAQueue({ data, onAction, onSel }) {
   );
 }
 
-function MonitorPage({ data, onSel }) {
+function MonitorPage({ data, onSel, onAction }) {
   const overdue = data.filter(d=>d.isLate===true);
   const actionable = data.filter(d=>["doc_complete","approved","processing","kurang_bayar","lebih_bayar","employee_confirmed"].includes(d.status) && !d.settled);
   const caOut = data.filter(d=>d.type==="cash_advance" && !d.settled && !["rejected"].includes(d.status));
@@ -864,28 +864,35 @@ function MonitorPage({ data, onSel }) {
   return (
     <div>
       <div className="al ab mb4" style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-        <span><Ic n="clock" s={14} c="#2563eb" style={{marginRight:8,verticalAlign:"middle"}}/><strong>SLA Tracker Aktif:</strong> Lacak kecepatan proses dokumen tiap divisi.</span>
+        <span><Ic n="clock" s={14} c="#2563eb" style={{marginRight:8,verticalAlign:"middle"}}/><strong>SLA Tracker Aktif.</strong></span>
         <button className="btn bg sm" onClick={exportSLA}>⬇️ Export Laporan SLA</button>
       </div>
-      <div className="sg">
-        <div className="st tl"><div className="sl">Total Antrian</div><div className="sv">{actionable.length}</div></div>
-        <div className="st rd"><div className="sl">Terlambat</div><div className="sv">{overdue.length}</div></div>
-      </div>
-
+      
       <div className="card mt4">
         <div className="ch"><h3>Perlu Ditindak Finance</h3></div>
         <div className="tw"><table>
           <thead><tr><th>ID</th><th>Pemohon</th><th>Keperluan</th><th>Tujuan & Tanggal</th><th>Lama Antri (SLA)</th><th>Jumlah</th><th>Status</th><th>Aksi</th></tr></thead>
           <tbody>{actionable.map(d=>(
-            <tr key={d.id} onClick={()=>onSel(d.id)} style={{cursor:"pointer"}}>
-              <td><span className="mono">{d.id}</span></td>
-              <td><div className="bold">{d.submitter}</div></td>
-              <td><div className="trunc" style={{maxWidth:130}}>{d.purpose}</div></td>
-              <td><div className="bold" style={{fontSize:12}}>{d.destination}</div><div style={{fontSize:11,color:"var(--i3)"}}>{fd(d.dateStart)} - {fd(d.dateEnd)}</div></td>
-              <td><SlaBadge start={d.docCompleteAt || d.submitted} /></td>
-              <td className="bold">{rp(d.amount)}</td>
-              <td><SBadge s={d.status}/></td>
-              <td><button className="btn bo xs" onClick={()=>onSel(d.id)}>Buka Settle</button></td>
+            <tr key={d.id} style={{cursor:"pointer"}}>
+              <td onClick={()=>onSel(d.id)}><span className="mono">{d.id}</span></td>
+              <td onClick={()=>onSel(d.id)}><div className="bold">{d.submitter}</div></td>
+              <td onClick={()=>onSel(d.id)}><div className="trunc" style={{maxWidth:130}}>{d.purpose}</div></td>
+              <td onClick={()=>onSel(d.id)}><div className="bold" style={{fontSize:12}}>{d.destination}</div><div style={{fontSize:11,color:"var(--i3)"}}>{fd(d.dateStart)} - {fd(d.dateEnd)}</div></td>
+              <td onClick={()=>onSel(d.id)}><SlaBadge start={d.docCompleteAt || d.submitted} /></td>
+              <td onClick={()=>onSel(d.id)} className="bold">{rp(d.amount)}</td>
+              <td onClick={()=>onSel(d.id)}><SBadge s={d.status}/></td>
+              <td>
+                {/* Tombol Proses Langsung */}
+                {["doc_complete","approved"].includes(d.status) && (
+                  <button className="btn bp xs" onClick={()=>{
+                    onAction(d.id, "process", "Diproses Finance");
+                    if(isReady()) API.updateStatus(d.id, { status: "processing" });
+                  }}>Proses</button>
+                )}
+                {d.status === "processing" && (
+                  <button className="btn bo xs" onClick={()=>onSel(d.id)}>Settle</button>
+                )}
+              </td>
             </tr>
           ))}</tbody>
         </table>{actionable.length===0&&<div className="empty" style={{padding:"20px 0"}}><p>Tidak ada yang perlu ditindak 🎉</p></div>}</div>
