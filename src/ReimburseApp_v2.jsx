@@ -25,7 +25,6 @@ const DEPTS = ["Sales","Commercial","HRD","Marketing","GA","IT","Finance","Lainn
 const AREAS = ["Jakarta","Surabaya","Semarang","Medan","Yogyakarta","Denpasar","Bandung","Palembang"];
 const CATS  = ["Perjalanan Dinas","Akomodasi / Hotel","Makan","Entertainment","Transportasi","Uang Saku","Komunikasi","Lain-lain"];
 
-
 const DEMO = [];
 
 const STATUS = {
@@ -85,20 +84,28 @@ const workdaysSinceEnd = (dateEnd) => {
   return days;
 };
 
+// Hitung hari kerja di antara 2 tanggal (untuk SLA)
+const workdaysBetween = (d1, d2) => {
+  if (!d1) return 0;
+  const start = new Date(d1); start.setHours(0,0,0,0);
+  const end = d2 ? new Date(d2) : new Date(); end.setHours(0,0,0,0);
+  if (start >= end) return 0;
+  let days = 0, cur = new Date(start);
+  while (cur < end) {
+    cur.setDate(cur.getDate()+1);
+    if (cur.getDay()!==0 && cur.getDay()!==6) days++;
+  }
+  return days;
+};
+
 const isOverdue = (d) => {
   if (!d.dateEnd) return false;
-  // Terlambat = status masih "pending" lebih dari 5 hari kerja sejak trip selesai
-  // (artinya karyawan belum menyerahkan dokumen ke Admin LK/JKT)
-  // Kalau sudah doc_received_* ke atas → dokumen sudah diserahkan, tidak terlambat
   if (d.status !== "pending") return false;
   if (d.settled || d.status === "rejected") return false;
   return workdaysSinceEnd(d.dateEnd) > 5;
 };
 
 const withLateFlagOnly = (d) => ({ ...d, isLate: isOverdue(d) });
-
-// Nomor WhatsApp Finance — ganti sesuai nomor aktif (format internasional tanpa +)
-const FINANCE_WA = "6285921551618";
 
 // ── API ──────────────────────────────────────────────────────
 const SB = {
@@ -130,6 +137,7 @@ const SB = {
       purpose:r.purpose, destination:r.destination, dateStart:r.date_start, dateEnd:r.date_end, amount:r.amount, status:r.status, submitted:r.submitted, categories:r.categories||[], notes:r.notes||"",
       settled:r.settled||false, settledDate:r.settled_date||null, approverName:r.approver_name||"", financeNote:r.finance_note||"", oerAmount:r.oer_amount||0, oerCategories:r.oer_categories||[], oerNote:r.oer_note||"", oerDate:r.oer_date||"",
       caRef:r.ca_ref||"", docRoute:r.doc_route||"admin_jkt", adminLkName:r.admin_lk_name||"", adminJktName:r.admin_jkt_name||"", gaNote:r.ga_note||"", gaOerNote:r.ga_oer_note||"", area:r.area||"Jakarta",
+      docReceivedLkAt: r.doc_received_lk_at, docSentJktAt: r.doc_sent_jkt_at, docReceivedJktAt: r.doc_received_jkt_at, docCompleteAt: r.doc_complete_at // SLA timestamps
     })) : null;
   },
   async create(d) {
@@ -156,12 +164,12 @@ const API = {
     const res = await SB.req("POST","accounts",{ username:acc.username.toLowerCase(), password:acc.password, name:acc.name, dept:acc.dept, area:acc.area||"Jakarta", created_at:new Date().toISOString() });
     return res ? { ok:true } : { ok:false };
   },
-  docReceivedLK:  (id, n) => SB.update(id, { status: "doc_received_lk", admin_lk_name: n }),
-  docSentJkt:     (id)    => SB.update(id, { status: "doc_sent_jkt" }),
-  docReceivedJkt: (id, n) => SB.update(id, { status: "doc_received_jkt", admin_jkt_name: n }),
+  docReceivedLK:  (id, n) => SB.update(id, { status: "doc_received_lk", admin_lk_name: n, doc_received_lk_at: new Date().toISOString() }),
+  docSentJkt:     (id)    => SB.update(id, { status: "doc_sent_jkt", doc_sent_jkt_at: new Date().toISOString() }),
+  docReceivedJkt: (id, n) => SB.update(id, { status: "doc_received_jkt", admin_jkt_name: n, doc_received_jkt_at: new Date().toISOString() }),
   oerDocReceived: (id, n) => SB.update(id, { status: "oer_doc_received", admin_jkt_name: n }),
   docComplete: (id, amt, note) => {
-    const p = { status: "doc_complete", ga_note: note||"" }; 
+    const p = { status: "doc_complete", ga_note: note||"", doc_complete_at: new Date().toISOString() }; 
     if (amt) p.oer_amount = amt; 
     return SB.update(id, p);
   },
@@ -335,6 +343,21 @@ const SBadge = ({ s, trx, isOwner }) => {
 
 const LateBadge = ({ d }) => d.isLate ? <span className="badge" style={{color:"#9f1239",background:"#fff1f2",marginLeft:4}}>⚠ Terlambat</span> : null;
 const TTag = ({ t }) => <span className={`tag ${t==="cash_advance"?"tca":"tre"}`}>{t==="cash_advance"?"CA":"Reimburse"}</span>;
+
+const SlaBadge = ({ start, end, maxDays = 2 }) => {
+  const days = workdaysBetween(start, end);
+  const isLate = !end && days > maxDays;
+  if (days === 0 && !end) return <span className="badge" style={{background:"#f1f5f9",color:"#64748b"}}>Hari ini</span>;
+  return (
+    <span className="badge" style={{background:isLate?"#fef2f2":"#f1f5f9",color:isLate?"#dc2626":"#475569",border:isLate?"1px solid #fca5a5":"1px solid #e2e8f0"}}>
+      {isLate?"⚠️ ":""}{days} hari kerja
+    </span>
+  );
+};
+
+const LS_KEY2  = "reimburse_accounts_v3";
+const lsGet2   = () => { try { return JSON.parse(localStorage.getItem(LS_KEY2)||"{}"); } catch { return {}; } };
+const lsSave2  = (a) => { try { localStorage.setItem(LS_KEY2, JSON.stringify(a)); } catch {} };
 
 const PwInput = ({ value, onChange, placeholder, showState, toggleShow, onEnter }) => (
   <div style={{position:"relative"}}>
@@ -645,18 +668,20 @@ function AdminLKQueue({ data, onAction, onSel }) {
   const received = data.filter(d => d.status === "doc_received_lk").filter(d => !q || d.submitter.toLowerCase().includes(q.toLowerCase()));
   return (
     <div>
+      <div className="al ab mb4"><Ic n="clock" s={14} c="#2563eb"/><span><strong>SLA Tracker Aktif:</strong> Dokumen yang mengantri lebih dari 2 hari kerja akan ditandai <span style={{color:"#dc2626",fontWeight:700}}>merah</span>.</span></div>
       <div className="card mb3"><div className="cb fg fg2"><div><label className="fl">Cari Pemohon</label><input value={q} onChange={e=>setQ(e.target.value)}/></div><div><label className="fl">Admin LK Bertugas *</label><input value={adminName} onChange={e=>setAdminName(e.target.value)} placeholder="Nama Anda"/></div></div></div>
       
       <div className="card mb3">
         <div className="ch"><h3>Menunggu Dokumen</h3></div>
         <div className="tw"><table>
-          <thead><tr><th>ID</th><th>Pemohon</th><th>Nominal</th><th>Tujuan & Tanggal</th><th>Aksi</th></tr></thead>
+          <thead><tr><th>ID</th><th>Pemohon</th><th>Nominal</th><th>Tujuan & Tanggal</th><th>Lama Antri (SLA)</th><th>Aksi</th></tr></thead>
           <tbody>{queue.map(d=>(
             <tr key={d.id} onClick={()=>onSel(d.id)} style={{cursor:"pointer"}}>
               <td><span className="mono">{d.id}</span></td>
               <td><div className="bold">{d.submitter}</div></td>
               <td><span className="bold">{rp(d.amount)}</span></td>
               <td><div className="bold" style={{fontSize:12}}>{d.destination}</div><div style={{fontSize:11,color:"var(--i3)"}}>{fd(d.dateStart)} - {fd(d.dateEnd)}</div></td>
+              <td><SlaBadge start={d.submitted} /></td>
               <td><button className="btn bg xs" onClick={e=>{e.stopPropagation(); if(!adminName)return alert("Isi nama admin"); onAction(d.id,"doc_received_lk",adminName); API.docReceivedLK(d.id,adminName);}}>Terima</button></td>
             </tr>
           ))}</tbody>
@@ -667,13 +692,14 @@ function AdminLKQueue({ data, onAction, onSel }) {
         <div className="card">
           <div className="ch"><h3>Siap Kirim ke Jakarta</h3></div>
           <div className="tw"><table>
-            <thead><tr><th>ID</th><th>Pemohon</th><th>Nominal</th><th>Tujuan & Tanggal</th><th>Aksi</th></tr></thead>
+            <thead><tr><th>ID</th><th>Pemohon</th><th>Nominal</th><th>Tujuan & Tanggal</th><th>Lama Antri (SLA)</th><th>Aksi</th></tr></thead>
             <tbody>{received.map(d=>(
               <tr key={d.id} onClick={()=>onSel(d.id)} style={{cursor:"pointer"}}>
                 <td><span className="mono">{d.id}</span></td>
                 <td>{d.submitter}</td>
                 <td><span className="bold">{rp(d.amount)}</span></td>
                 <td><div className="bold" style={{fontSize:12}}>{d.destination}</div><div style={{fontSize:11,color:"var(--i3)"}}>{fd(d.dateStart)} - {fd(d.dateEnd)}</div></td>
+                <td><SlaBadge start={d.docReceivedLkAt || d.submitted} /></td>
                 <td><button className="btn bp xs" onClick={e=>{e.stopPropagation(); onAction(d.id,"doc_sent_jkt"); API.docSentJkt(d.id);}}>✈️ Kirim JKT</button></td>
               </tr>
             ))}</tbody>
@@ -694,18 +720,20 @@ function AdminJKTQueue({ data, onAction, onSel }) {
   
   return (
     <div>
+      <div className="al ab mb4"><Ic n="clock" s={14} c="#2563eb"/><span><strong>SLA Tracker Aktif:</strong> Dokumen yang mengantri lebih dari 2 hari kerja akan ditandai <span style={{color:"#dc2626",fontWeight:700}}>merah</span>.</span></div>
       <div className="card mb3"><div className="cb fg fg2"><div><label className="fl">Cari</label><input value={q} onChange={e=>setQ(e.target.value)}/></div><div><label className="fl">Admin JKT Bertugas *</label><input value={adminName} onChange={e=>setAdminName(e.target.value)}/></div></div></div>
       
       <div className="card mb3">
         <div className="ch"><h3>Dari Luar Kota / Langsung</h3></div>
         <div className="tw"><table>
-          <thead><tr><th>ID</th><th>Pemohon</th><th>Nominal</th><th>Tujuan & Tanggal</th><th>Aksi</th></tr></thead>
+          <thead><tr><th>ID</th><th>Pemohon</th><th>Nominal</th><th>Tujuan & Tanggal</th><th>Lama Antri (SLA)</th><th>Aksi</th></tr></thead>
           <tbody>{[...queue,...direct].map(d=>(
             <tr key={d.id} onClick={()=>onSel(d.id)} style={{cursor:"pointer"}}>
               <td><span className="mono">{d.id}</span></td>
               <td><div className="bold">{d.submitter}</div></td>
               <td><span className="bold">{rp(d.amount)}</span></td>
               <td><div className="bold" style={{fontSize:12}}>{d.destination}</div><div style={{fontSize:11,color:"var(--i3)"}}>{fd(d.dateStart)} - {fd(d.dateEnd)}</div></td>
+              <td><SlaBadge start={d.docSentJktAt || d.submitted} /></td>
               <td><button className="btn bg xs" onClick={e=>{e.stopPropagation(); doRec(d.id);}}>Terima</button></td>
             </tr>
           ))}</tbody>
@@ -716,13 +744,14 @@ function AdminJKTQueue({ data, onAction, onSel }) {
         <div className="card">
           <div className="ch"><h3>OER Masuk</h3></div>
           <div className="tw"><table>
-            <thead><tr><th>ID</th><th>Pemohon</th><th>Nominal CA</th><th>Tujuan & Tanggal</th><th>Aksi</th></tr></thead>
+            <thead><tr><th>ID</th><th>Pemohon</th><th>Nominal CA</th><th>Tujuan & Tanggal</th><th>Lama Antri (SLA)</th><th>Aksi</th></tr></thead>
             <tbody>{oerQueue.map(d=>(
               <tr key={d.id} onClick={()=>onSel(d.id)} style={{cursor:"pointer"}}>
                 <td><span className="mono">{d.id}</span></td>
                 <td>{d.submitter}</td>
                 <td><span className="bold">{rp(d.amount)}</span></td>
                 <td><div className="bold" style={{fontSize:12}}>{d.destination}</div><div style={{fontSize:11,color:"var(--i3)"}}>{fd(d.dateStart)} - {fd(d.dateEnd)}</div></td>
+                <td><SlaBadge start={d.oerDate || today()} /></td>
                 <td><button className="btn bg xs" onClick={e=>{e.stopPropagation(); if(!adminName)return alert("Admin?"); onAction(d.id,"oer_doc_received",adminName); API.oerDocReceived(d.id,adminName);}}>Terima OER</button></td>
               </tr>
             ))}</tbody>
@@ -735,10 +764,9 @@ function AdminJKTQueue({ data, onAction, onSel }) {
 
 function GAQueue({ data, onAction, onSel }) {
   const [gaNote, setGaNote] = useState("");
-  const [gaName, setGaName] = useState(""); // State baru untuk Nama GA
-  const [q, setQ] = useState(""); // State baru untuk Pencarian
+  const [gaName, setGaName] = useState(""); 
+  const [q, setQ] = useState(""); 
 
-  // Antrian difilter berdasarkan status DAN input pencarian (nama pemohon)
   const queue = data.filter(d => d.status === "doc_received_jkt").filter(d => !q || d.submitter.toLowerCase().includes(q.toLowerCase()));
   const oerQueue = data.filter(d => d.status === "oer_doc_received").filter(d => !q || d.submitter.toLowerCase().includes(q.toLowerCase()));
   
@@ -760,50 +788,39 @@ function GAQueue({ data, onAction, onSel }) {
 
   return (
     <div>
-      {/* Header Pencarian dan Input Nama GA */}
+      <div className="al ab mb4"><Ic n="clock" s={14} c="#2563eb"/><span><strong>SLA Tracker Aktif:</strong> Dokumen yang mengantri lebih dari 2 hari kerja akan ditandai <span style={{color:"#dc2626",fontWeight:700}}>merah</span>.</span></div>
       <div className="card mb3">
         <div className="cb fg fg2">
-          <div>
-            <label className="fl">Cari Pemohon</label>
-            <input value={q} onChange={e=>setQ(e.target.value)} placeholder="Ketik nama karyawan..."/>
-          </div>
-          <div>
-            <label className="fl">GA Bertugas *</label>
-            <input value={gaName} onChange={e=>setGaName(e.target.value)} placeholder="Nama Anda"/>
-          </div>
+          <div><label className="fl">Cari Pemohon</label><input value={q} onChange={e=>setQ(e.target.value)} placeholder="Ketik nama karyawan..."/></div>
+          <div><label className="fl">GA Bertugas *</label><input value={gaName} onChange={e=>setGaName(e.target.value)} placeholder="Nama Anda"/></div>
         </div>
       </div>
 
-      {/* Tabel Dokumen Baru */}
       <div className="card mb3">
         <div className="ch">
           <h3>Antrian GA</h3>
           <input value={gaNote} onChange={e=>setGaNote(e.target.value)} placeholder="Catatan opsional..." style={{width:200,fontSize:12,padding:"6px 10px",marginLeft:"auto"}}/>
         </div>
         <div className="tw"><table>
-          <thead><tr><th>ID</th><th>Pemohon</th><th>Nominal</th><th>Tujuan & Tanggal</th><th>Aksi</th></tr></thead>
+          <thead><tr><th>ID</th><th>Pemohon</th><th>Nominal</th><th>Tujuan & Tanggal</th><th>Lama Antri (SLA)</th><th>Aksi</th></tr></thead>
           <tbody>{queue.map(d=>(
             <tr key={d.id} onClick={()=>onSel(d.id)} style={{cursor:"pointer"}}>
               <td><span className="mono">{d.id}</span></td>
               <td><div className="bold">{d.submitter}</div></td>
               <td><span className="bold">{rp(d.amount)}</span></td>
               <td><div className="bold" style={{fontSize:12}}>{d.destination}</div><div style={{fontSize:11,color:"var(--i3)"}}>{fd(d.dateStart)} - {fd(d.dateEnd)}</div></td>
-              <td>
-                <button className="btn bg xs" onClick={e=>{e.stopPropagation(); handleApproveDoc(d);}}>
-                  ✓ Lengkap
-                </button>
-              </td>
+              <td><SlaBadge start={d.docReceivedJktAt || d.submitted} /></td>
+              <td><button className="btn bg xs" onClick={e=>{e.stopPropagation(); handleApproveDoc(d);}}>✓ Lengkap</button></td>
             </tr>
           ))}</tbody>
         </table></div>
       </div>
 
-      {/* Tabel Dokumen OER */}
       {oerQueue.length>0 && (
         <div className="card">
           <div className="ch"><h3 style={{color:"#7c3aed"}}>OER Dokumen — Perlu Approve</h3></div>
           <div className="tw"><table>
-            <thead><tr><th>ID</th><th>Pemohon</th><th>Nominal CA</th><th>Tujuan & Tanggal</th><th>Selisih</th><th>Aksi</th></tr></thead>
+            <thead><tr><th>ID</th><th>Pemohon</th><th>Nominal CA</th><th>Tujuan & Tanggal</th><th>Lama Antri (SLA)</th><th>Selisih</th><th>Aksi</th></tr></thead>
             <tbody>{oerQueue.map(d=>{
               const sel = (d.oerAmount||0)-d.amount; 
               return(
@@ -812,11 +829,10 @@ function GAQueue({ data, onAction, onSel }) {
                   <td>{d.submitter}</td>
                   <td><span className="bold">{rp(d.amount)}</span></td>
                   <td><div className="bold" style={{fontSize:12}}>{d.destination}</div><div style={{fontSize:11,color:"var(--i3)"}}>{fd(d.dateStart)} - {fd(d.dateEnd)}</div></td>
+                  <td><SlaBadge start={d.docReceivedJktAt || d.oerDate || today()} /></td>
                   <td className="bold" style={{color:sel<0?"#7c3aed":"#059669"}}>{sel<0?`Lebih ${rp(Math.abs(sel))}`:sel>0?`Kurang ${rp(sel)}`:"Pas"}</td>
                   <td>
-                    <button className="btn bg xs" style={{background:"#7c3aed"}} onClick={e=>{e.stopPropagation(); handleApproveOer(d);}}>
-                      Approve OER
-                    </button>
+                    <button className="btn bg xs" style={{background:"#7c3aed"}} onClick={e=>{e.stopPropagation(); handleApproveOer(d);}}>Approve OER</button>
                   </td>
                 </tr>
               );
@@ -833,8 +849,28 @@ function MonitorPage({ data, onSel }) {
   const actionable = data.filter(d=>["doc_complete","approved","processing","kurang_bayar","lebih_bayar","employee_confirmed"].includes(d.status) && !d.settled);
   const caOut = data.filter(d=>d.type==="cash_advance" && !d.settled && !["rejected"].includes(d.status));
   
+  const exportSLA = () => {
+    const headers = ["ID", "Pemohon", "Tgl Pengajuan", "Tgl Terima LK", "SLA Admin LK (Hari Kerja)", "Tgl Terima JKT", "SLA Admin JKT (Hari Kerja)", "Tgl Lengkap GA", "SLA GA (Hari Kerja)", "Tgl Selesai Finance", "SLA Finance (Hari Kerja)"];
+    const rows = data.map(d => [
+      d.id, d.submitter, fd(d.submitted),
+      fd(d.docReceivedLkAt), workdaysBetween(d.submitted, d.docReceivedLkAt),
+      fd(d.docReceivedJktAt), workdaysBetween(d.docSentJktAt||d.submitted, d.docReceivedJktAt),
+      fd(d.docCompleteAt), workdaysBetween(d.docReceivedJktAt, d.docCompleteAt),
+      fd(d.settledDate), workdaysBetween(d.docCompleteAt, d.settledDate)
+    ]);
+    const csv = [headers,...rows].map(r=>r.map(c=>`"${String(c||"").replace(/"/g,'""')}"`).join(",")).join("\n");
+    const blob = new Blob(["\uFEFF"+csv],{type:"text/csv;charset=utf-8;"});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a"); a.href=url; a.download="Laporan_SLA.csv"; a.click();
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <div>
+      <div className="al ab mb4" style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+        <span><Ic n="clock" s={14} c="#2563eb" style={{marginRight:8,verticalAlign:"middle"}}/><strong>SLA Tracker Aktif:</strong> Lacak kecepatan proses dokumen tiap divisi.</span>
+        <button className="btn bg sm" onClick={exportSLA}>⬇️ Export Laporan SLA</button>
+      </div>
       <div className="sg">
         <div className="st tl"><div className="sl">Total Antrian</div><div className="sv">{actionable.length}</div></div>
         <div className="st rd"><div className="sl">Terlambat</div><div className="sv">{overdue.length}</div></div>
@@ -843,13 +879,14 @@ function MonitorPage({ data, onSel }) {
       <div className="card mt4">
         <div className="ch"><h3>Perlu Ditindak Finance</h3></div>
         <div className="tw"><table>
-          <thead><tr><th>ID</th><th>Pemohon</th><th>Keperluan</th><th>Tujuan & Tanggal</th><th>Jumlah</th><th>Status</th><th>Aksi</th></tr></thead>
+          <thead><tr><th>ID</th><th>Pemohon</th><th>Keperluan</th><th>Tujuan & Tanggal</th><th>Lama Antri (SLA)</th><th>Jumlah</th><th>Status</th><th>Aksi</th></tr></thead>
           <tbody>{actionable.map(d=>(
             <tr key={d.id} onClick={()=>onSel(d.id)} style={{cursor:"pointer"}}>
               <td><span className="mono">{d.id}</span></td>
               <td><div className="bold">{d.submitter}</div></td>
               <td><div className="trunc" style={{maxWidth:130}}>{d.purpose}</div></td>
               <td><div className="bold" style={{fontSize:12}}>{d.destination}</div><div style={{fontSize:11,color:"var(--i3)"}}>{fd(d.dateStart)} - {fd(d.dateEnd)}</div></td>
+              <td><SlaBadge start={d.docCompleteAt || d.submitted} /></td>
               <td className="bold">{rp(d.amount)}</td>
               <td><SBadge s={d.status}/></td>
               <td><button className="btn bo xs" onClick={()=>onSel(d.id)}>Buka Settle</button></td>
@@ -922,9 +959,7 @@ function EditForm({ trx, onSave, onCancel }) {
       ...trx, type: f.type, purpose: f.purpose, destination: f.destination, dateStart: f.dateStart, dateEnd: f.dateEnd,
       approverName:f.approverName, notes: f.notes, amount: total, categories: f.items.map(it=>({cat:it.cat, amt:parseFloat(it.amt)||0})),
     };
-    // 1. Update UI immediately (optimistic)
     onSave(updated);
-    // 2. Sync ke Supabase di background — tidak await agar UI tidak freeze
     if (isReady()) API.editData(trx.id, updated).catch(e=>console.error("Edit sync error:", e));
   };
 
@@ -977,9 +1012,8 @@ function OerReconBox({ trx, rc, isFin, canEdit, isOwner, onAction }) {
   const [editMode, setEditMode] = useState(false); 
   const [items, setItems] = useState(trx.oerCategories?.length ? trx.oerCategories.map(c=>({cat:c.cat, amt:String(c.amt)})) : [{cat:"Perjalanan Dinas", amt:""}]);
   const [oerNote, setOerNote] = useState(trx.oerNote||""); 
-  
-  // State baru untuk input Estimasi Uang Masuk
   const [estDate, setEstDate] = useState(today()); 
+  const [copied, setCopied] = useState(false);
 
   const editTotal = items.reduce((s,it)=>s+(parseFloat(it.amt)||0),0);
   const editRc = editMode ? (() => { const sel = editTotal - trx.amount; return { ca:trx.amount, oer:editTotal, selisih:sel, isKurang:sel>0, isLebih:sel<0, isLunas:sel===0 }; })() : rc;
@@ -995,6 +1029,13 @@ function OerReconBox({ trx, rc, isFin, canEdit, isOwner, onAction }) {
   const doSettle = (note) => {
     onAction(trx.id, "settle", note);
     if (isReady()) API.updateStatus(trx.id, { status:"settled", settled:true, settled_date:today(), finance_note:note }).catch(e=>console.error("Settle err:",e));
+  };
+
+  const handleCopyTagihan = () => {
+    const text = `Halo ${trx.submitter}, mohon kembalikan sisa Cash Advance untuk pengajuan ${trx.id} sebesar ${rp(Math.abs(rc.selisih))} ke rekening perusahaan. Silakan buka aplikasi ReimburseApp untuk upload bukti transfernya ya. Terima kasih!`;
+    navigator.clipboard.writeText(text);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2500);
   };
   
   const colV = editRc.isKurang?"#1e40af":editRc.isLebih?"#7c3aed":"#059669";
@@ -1039,8 +1080,8 @@ function OerReconBox({ trx, rc, isFin, canEdit, isOwner, onAction }) {
               <div className="al aw mt3" style={{fontSize:12}}>
                 <div>
                   <p style={{fontWeight:800,marginBottom:6}}>⚠️ Sisa CA Perlu Dikembalikan: <strong>{rp(Math.abs(rc.selisih))}</strong></p>
-                  <p style={{marginBottom:4}}>1. Transfer <strong>{rp(Math.abs(rc.selisih))}</strong> ke rekening perusahaan <strong>(4899889999)</strong></p>
-                  <p style={{marginBottom:8}}>2. Kirim bukti transfer ke tim Finance untuk diverifikasi (hubungi tim Finance).</p>
+                  <p style={{marginBottom:4}}>1. Transfer <strong>{rp(Math.abs(rc.selisih))}</strong> ke rekening perusahaan <strong>(4899889999 BCA)</strong></p>
+                  <p style={{marginBottom:8}}>2. Kirim bukti ke Finance melalui aplikasi (konfirmasi melalui tombol/halaman ini).</p>
                 </div>
               </div>
             )}
@@ -1048,14 +1089,12 @@ function OerReconBox({ trx, rc, isFin, canEdit, isOwner, onAction }) {
             {/* 2. BLOK FINANCE LEBIH BAYAR (Finance menagih sisa) */}
             {isFin && !trx.settled && trx.status === "lebih_bayar" && (
               <div className="mt3" style={{display:"flex", flexDirection:"column", gap:8}}>
-                <button className="btn bo sm" style={{width:"100%", borderColor:"#7c3aed", color:"#7c3aed", background:"#f3e8ff"}}
-                  onClick={() => {
-                    const text = `Halo ${trx.submitter}, untuk settlement CA *${trx.id}* (${trx.purpose}), ada sisa lebih bayar sebesar *${rp(Math.abs(rc.selisih))}*.\n\nMohon dibantu transfer pengembaliannya ke rekening Perusahaan *(4899889999)* dan kirim foto buktinya ke sini ya 🙏 Terima kasih!`;
-                    navigator.clipboard.writeText(text);
-                    alert("Teks tagihan disalin! Silakan paste di chat karyawan.");
-                  }}>
-                  📋 Salin Teks Tagihan
-                </button>
+                <div className="al ab" style={{fontSize:11, display:"block"}}>
+                  <p style={{marginBottom:8}}>Menunggu Karyawan mengembalikan sisa dana.</p>
+                  <button className="btn bo xs" style={{background:"white", color:"#1e3a8a", borderColor:"#93c5fd"}} onClick={handleCopyTagihan}>
+                    {copied ? "✓ Teks Penagihan Disalin!" : "📋 Salin Teks Penagihan"}
+                  </button>
+                </div>
                 <button className="btn sm" style={{width:"100%",background:"#7c3aed",color:"white"}}
                   onClick={()=>doSettle("Dana pengembalian CA sudah diverifikasi masuk")}>
                   ✓ Verifikasi Dana Masuk & Selesaikan
@@ -1075,7 +1114,6 @@ function OerReconBox({ trx, rc, isFin, canEdit, isOwner, onAction }) {
                 </button>
               </div>
             )}
-
           </>
         )}
       </div>
