@@ -137,7 +137,7 @@ const SB = {
       purpose:r.purpose, destination:r.destination, dateStart:r.date_start, dateEnd:r.date_end, amount:r.amount, status:r.status, submitted:r.submitted, categories:r.categories||[], notes:r.notes||"",
       settled:r.settled||false, settledDate:r.settled_date||null, approverName:r.approver_name||"", financeNote:r.finance_note||"", oerAmount:r.oer_amount||0, oerCategories:r.oer_categories||[], oerNote:r.oer_note||"", oerDate:r.oer_date||"",
       caRef:r.ca_ref||"", docRoute:r.doc_route||"admin_jkt", adminLkName:r.admin_lk_name||"", adminJktName:r.admin_jkt_name||"", gaNote:r.ga_note||"", gaOerNote:r.ga_oer_note||"", area:r.area||"Jakarta",
-      docReceivedLkAt: r.doc_received_lk_at, docSentJktAt: r.doc_sent_jkt_at, docReceivedJktAt: r.doc_received_jkt_at, docCompleteAt: r.doc_complete_at // SLA timestamps
+      docReceivedLkAt: r.doc_received_lk_at, docSentJktAt: r.doc_sent_jkt_at, docReceivedJktAt: r.doc_received_jkt_at, docCompleteAt: r.doc_complete_at
     })) : null;
   },
   async create(d) {
@@ -327,7 +327,7 @@ const IP = {
   money:"M1 4h22v16H1zM1 10h22", user:"M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2M12 3a4 4 0 100 8 4 4 0 000-8",
   chart:"M18 20V10M12 20V4M6 20v-6M2 20h20", send:"M22 2L11 13M22 2l-7 20-4-9-9-4 20-7", trash:"M3 6h18M8 6V4a1 1 0 011-1h6a1 1 0 011 1v2M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6",
   logout:"M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9", menu:"M3 12h18M3 6h18M3 18h18", refresh:"M23 4v6h-6M1 20v-6h6M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15",
-  settings:"M12 15a3 3 0 100-6 3 3 0 000 6zM19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z"
+  settings:"M12 15a3 3 0 100-6 3 3 0 000 6zM19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z"
 };
 const Ic = ({ n, s=16, c="currentColor" }) => (<svg width={s} height={s} fill="none" stroke={c} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d={IP[n]||""}/></svg>);
 
@@ -354,10 +354,6 @@ const SlaBadge = ({ start, end, maxDays = 2 }) => {
     </span>
   );
 };
-
-const LS_KEY2  = "reimburse_accounts_v3";
-const lsGet2   = () => { try { return JSON.parse(localStorage.getItem(LS_KEY2)||"{}"); } catch { return {}; } };
-const lsSave2  = (a) => { try { localStorage.setItem(LS_KEY2, JSON.stringify(a)); } catch {} };
 
 const PwInput = ({ value, onChange, placeholder, showState, toggleShow, onEnter }) => (
   <div style={{position:"relative"}}>
@@ -508,7 +504,7 @@ function Dashboard({ data, user, nav }) {
             <p style={{fontWeight:800}}>Pengembalian Sisa — {d.id}</p>
             <p style={{fontSize:12}}>Kamu harus transfer sisa <strong style={{color:"#fde68a"}}>{rp(Math.abs((d.oerAmount||0)-d.amount))}</strong> ke perusahaan.</p>
           </div>
-          <button className="btn sm" onClick={()=>nav("list")} style={{background:"white",color:"#7c3aed"}}>Lihat →</button>
+          <button className="btn sm" onClick={()=>nav("list")} style={{background:"white",color:"#7c3aed"}}>Upload Bukti →</button>
         </div>
       ))}
 
@@ -949,18 +945,21 @@ function EditForm({ trx, onSave, onCancel }) {
     dateStart:   trx.dateStart, dateEnd: trx.dateEnd, approverName:trx.approverName,
     notes:       trx.notes||"", items: trx.categories.map(c=>({cat:c.cat, amt:String(c.amt)})),
   });
+  const [busy, setBusy] = useState(false);
   const set  = (k,v) => setF(p=>({...p,[k]:v}));
   const si   = (i,k,v) => setF(p=>{const n=[...p.items];n[i]={...n[i],[k]:v};return{...p,items:n};});
   const total = f.items.reduce((a,it)=>a+(parseFloat(it.amt)||0),0);
 
   const save = async () => {
     if (!f.purpose||!f.dateStart||!f.dateEnd||!f.approverName||total===0){alert("Harap lengkapi semua field wajib.");return;}
+    setBusy(true);
     const updated = {
       ...trx, type: f.type, purpose: f.purpose, destination: f.destination, dateStart: f.dateStart, dateEnd: f.dateEnd,
       approverName:f.approverName, notes: f.notes, amount: total, categories: f.items.map(it=>({cat:it.cat, amt:parseFloat(it.amt)||0})),
     };
     onSave(updated);
-    if (isReady()) API.editData(trx.id, updated).catch(e=>console.error("Edit sync error:", e));
+    if (isReady()) await API.editData(trx.id, updated).catch(e=>console.error("Edit sync error:", e));
+    setBusy(false);
   };
 
   return (
@@ -1001,8 +1000,8 @@ function EditForm({ trx, onSave, onCancel }) {
         <div className="fs"><div className="fst">Catatan</div><textarea value={f.notes} onChange={e=>set("notes",e.target.value)} rows={2}/></div>
       </div>
       <div style={{display:"flex",justifyContent:"flex-end",gap:9}}>
-        <button className="btn bo" onClick={onCancel}>Batal</button>
-        <button className="btn bp" onClick={save}>Simpan</button>
+        <button className="btn bo" onClick={onCancel} disabled={busy}>Batal</button>
+        <button className="btn bp" onClick={save} disabled={busy}>{busy?"Loading...":"Simpan"}</button>
       </div>
     </div>
   );
@@ -1080,7 +1079,7 @@ function OerReconBox({ trx, rc, isFin, canEdit, isOwner, onAction }) {
               <div className="al aw mt3" style={{fontSize:12}}>
                 <div>
                   <p style={{fontWeight:800,marginBottom:6}}>⚠️ Sisa CA Perlu Dikembalikan: <strong>{rp(Math.abs(rc.selisih))}</strong></p>
-                  <p style={{marginBottom:4}}>1. Transfer <strong>{rp(Math.abs(rc.selisih))}</strong> ke rekening perusahaan <strong>(4899889999 BCA)</strong></p>
+                  <p style={{marginBottom:4}}>1. Transfer <strong>{rp(Math.abs(rc.selisih))}</strong> ke rekening perusahaan <strong>(4899889999)</strong></p>
                   <p style={{marginBottom:8}}>2. Kirim bukti ke Finance melalui aplikasi (konfirmasi melalui tombol/halaman ini).</p>
                 </div>
               </div>
