@@ -578,7 +578,8 @@ function Dashboard({ data, user, nav }) {
 
 function SubmitPage({ user, onSubmit, data }) {
   const [f,setF] = useState({type:"reimburse",purpose:"",destination:"Jakarta",dateStart:"",dateEnd:"",approverName:"",notes:"",caRef:"",docRoute:"admin_jkt",items:[{cat:"Perjalanan Dinas",amt:""}]});
-  const [busy,setBusy] = useState(false); 
+  const [busy,setBusy] = useState(false);
+  const [docConfirmed,setDocConfirmed] = useState(false); 
   const set=(k,v)=>setF(p=>({...p,[k]:v})); 
   const si=(i,k,v)=>setF(p=>{const n=[...p.items];n[i]={...n[i],[k]:v};return{...p,items:n};});
   const total = f.items.reduce((a,it)=>a+(parseFloat(it.amt)||0),0);
@@ -586,6 +587,7 @@ function SubmitPage({ user, onSubmit, data }) {
 
   const submit = async () => {
     if (!f.purpose||!f.dateStart||!f.dateEnd||!f.approverName||total===0) return alert("Lengkapi data wajib (*)");
+    if (!docConfirmed) return alert("Pastikan dokumen fisik sudah disiapkan sebelum mengirim pengajuan.");
     const entry = { id:gid(), ...f, submitter:user.name, submitterUsername:user.username||"", dept:user.dept, area:user.area||"Jakarta", amount:total, submitted:today(), categories:f.items.map(it=>({cat:it.cat,amt:parseFloat(it.amt)||0})) };
     setBusy(true); 
     if (isReady()) await API.create(entry); 
@@ -652,7 +654,17 @@ function SubmitPage({ user, onSubmit, data }) {
           <div className="fst">Nama Admin Penerima *</div>
           <input value={f.approverName} onChange={e=>set("approverName",e.target.value)} placeholder="Admin Jakarta / LK"/>
         </div>
-        <div style={{textAlign:"right"}}><button className="btn bp" onClick={submit} disabled={busy}>{busy?"Memproses...":"Kirim Pengajuan"}</button></div>
+        <div style={{background:"#fffbeb",border:"2px solid #fbbf24",borderRadius:10,padding:"12px 14px",marginBottom:12}}>
+          <label style={{display:"flex",alignItems:"flex-start",gap:10,cursor:"pointer"}}>
+            <input type="checkbox" checked={docConfirmed} onChange={e=>setDocConfirmed(e.target.checked)} style={{width:"auto",marginTop:2,accentColor:"#0d9488",flexShrink:0}}/>
+            <span style={{fontSize:12.5,color:"#78350f",lineHeight:1.5}}>
+              <strong>Saya konfirmasi dokumen fisik sudah disiapkan</strong> dan siap diserahkan ke Admin
+              {f.docRoute==="admin_lk" ? " LK untuk dikirim ke Jakarta." : " JKT secara langsung."}
+              {" "}Pengajuan di aplikasi ini hanya valid jika dokumen fisik sudah ada.
+            </span>
+          </label>
+        </div>
+        <div style={{textAlign:"right"}}><button className="btn bp" onClick={submit} disabled={busy||!docConfirmed} style={{opacity:docConfirmed?1:0.5}}>{busy?"Memproses...":"Kirim Pengajuan"}</button></div>
       </div>
     </div>
   );
@@ -1247,23 +1259,15 @@ function DetailModal({ trx, user, onClose, onAction, onEdit }) {
               const SLA_MAX = 2;
               const slaStages = [
                 {
-                  label: "Tahap 1: Menunggu Admin LK terima dokumen",
-                  pic: "Admin LK",
+                  label: "Tahap 1: Menunggu Admin JKT terima dokumen",
+                  pic: trx.docRoute === "admin_lk" ? "Admin LK → Admin JKT" : "Admin JKT",
                   start: trx.submitted,
-                  end: trx.docReceivedLkAt,
-                  active: !trx.docReceivedLkAt && ["pending"].includes(trx.status),
+                  end: trx.docReceivedJktAt,
+                  active: !trx.docReceivedJktAt && ["pending","doc_received_lk","doc_sent_jkt"].includes(trx.status),
                   skip: false,
                 },
                 {
-                  label: "Tahap 2: Menunggu Admin JKT terima dari LK",
-                  pic: "Admin JKT",
-                  start: trx.docReceivedLkAt,
-                  end: trx.docReceivedJktAt,
-                  active: !trx.docReceivedJktAt && ["doc_received_lk","doc_sent_jkt"].includes(trx.status),
-                  skip: !trx.docReceivedLkAt,
-                },
-                {
-                  label: "Tahap 3: Menunggu GA lengkapi dokumen",
+                  label: "Tahap 2: Menunggu GA lengkapi dokumen",
                   pic: "GA",
                   start: trx.docReceivedJktAt,
                   end: trx.docCompleteAt,
@@ -1271,7 +1275,7 @@ function DetailModal({ trx, user, onClose, onAction, onEdit }) {
                   skip: !trx.docReceivedJktAt,
                 },
                 {
-                  label: "Tahap 4: Menunggu Finance memproses",
+                  label: "Tahap 3: Menunggu Finance memproses",
                   pic: "Finance",
                   start: trx.docCompleteAt,
                   end: trx.settledDate,
