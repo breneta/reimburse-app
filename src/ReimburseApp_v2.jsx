@@ -1247,28 +1247,32 @@ function DetailModal({ trx, user, onClose, onAction, onEdit }) {
               const SLA_MAX = 2;
               const slaStages = [
                 {
-                  label: "Tahap 1: Karyawan → Admin LK",
+                  label: "Tahap 1: Menunggu Admin LK terima dokumen",
+                  pic: "Admin LK",
                   start: trx.submitted,
                   end: trx.docReceivedLkAt,
                   active: !trx.docReceivedLkAt && ["pending"].includes(trx.status),
                   skip: false,
                 },
                 {
-                  label: "Tahap 2: Admin LK → Admin JKT",
+                  label: "Tahap 2: Menunggu Admin JKT terima dari LK",
+                  pic: "Admin JKT",
                   start: trx.docReceivedLkAt,
                   end: trx.docReceivedJktAt,
                   active: !trx.docReceivedJktAt && ["doc_received_lk","doc_sent_jkt"].includes(trx.status),
                   skip: !trx.docReceivedLkAt,
                 },
                 {
-                  label: "Tahap 3: Admin JKT → GA",
+                  label: "Tahap 3: Menunggu GA lengkapi dokumen",
+                  pic: "GA",
                   start: trx.docReceivedJktAt,
                   end: trx.docCompleteAt,
                   active: !trx.docCompleteAt && ["doc_received_jkt"].includes(trx.status),
                   skip: !trx.docReceivedJktAt,
                 },
                 {
-                  label: "Tahap 4: GA → Finance",
+                  label: "Tahap 4: Menunggu Finance memproses",
+                  pic: "Finance",
                   start: trx.docCompleteAt,
                   end: trx.settledDate,
                   active: !trx.settledDate && ["doc_complete","approved","processing"].includes(trx.status),
@@ -1294,18 +1298,25 @@ function DetailModal({ trx, user, onClose, onAction, onEdit }) {
                       const barCol = done ? (late ? "#dc2626" : "#0d9488") : late ? "#dc2626" : warn ? "#d97706" : "#0d9488";
                       const bgCol = done ? (late ? "#fff1f2" : "#f0fdfa") : late ? "#fff1f2" : warn ? "#fffbeb" : "#f0fdfa";
                       const txtCol = done ? (late ? "#9f1239" : "#0f766e") : late ? "#9f1239" : warn ? "#92400e" : "#0f766e";
+                      const statusText = done
+                        ? (late ? `⚠ ${days} hk — terlambat` : `✓ ${days} hk`)
+                        : st.active
+                          ? (late ? `⚠ +${days} hk — belum direspons` : days === 0 ? "Baru dikirim" : `${days} hk — menunggu`)
+                          : "–";
                       return (
                         <div key={i} style={{background:bgCol,borderRadius:8,padding:"9px 12px",border:`1px solid ${barCol}22`}}>
-                          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:5}}>
-                            <span style={{fontSize:11,fontWeight:700,color:"var(--ink)"}}>{st.label}</span>
-                            <span style={{fontSize:11,fontWeight:800,color:txtCol}}>
-                              {done
-                                ? (late ? `⚠ ${days} hk (terlambat)` : `✓ ${days} hk`)
-                                : st.active
-                                  ? (late ? `⚠ +${days} hk (sedang antri)` : `${days} hk (sedang antri)`)
-                                  : "–"}
-                            </span>
+                          <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:4,gap:8}}>
+                            <div>
+                              <span style={{fontSize:11,fontWeight:700,color:"var(--ink)"}}>{st.label}</span>
+                              {st.pic && <span style={{fontSize:10,color:"var(--i3)",marginLeft:6,background:"var(--ln2)",padding:"1px 6px",borderRadius:8}}>PIC: {st.pic}</span>}
+                            </div>
+                            <span style={{fontSize:11,fontWeight:800,color:txtCol,whiteSpace:"nowrap"}}>{statusText}</span>
                           </div>
+                          {st.active && late && (
+                            <p style={{fontSize:10,color:txtCol,marginBottom:4,marginTop:0}}>
+                              Dokumen sudah menunggu lebih dari {SLA_MAX} hari kerja di tahap ini. Hubungi {st.pic} untuk menindaklanjuti.
+                            </p>
+                          )}
                           {(done || st.active) && (
                             <div style={{height:4,borderRadius:4,background:"#e2e8f0",overflow:"hidden"}}>
                               <div style={{height:"100%",width:`${pct}%`,background:barCol,borderRadius:4,transition:"width .4s"}}/>
