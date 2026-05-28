@@ -1241,6 +1241,83 @@ function DetailModal({ trx, user, onClose, onAction, onEdit }) {
             {trx.type==="cash_advance" && rc && <OerReconBox trx={trx} rc={rc} isFin={isFin} canEdit={canEdit} isOwner={isOwner} onAction={onAction}/>}
             
             <p className="sl mb3">Progress</p><div>{tl.map((t,i)=>(<div key={i} className="tlr"><div className="tldc"><div className="tld" style={{background:t.ok?t.col:"var(--ln)"}}><Ic n={t.icon} s={12} c={t.ok?"#fff":"var(--i4)"}/></div>{i<tl.length-1&&<div className="tlln"/>}</div><div className="tlb"><div className="tlt" style={{color:t.ok?"var(--ink)":"var(--i4)"}}>{t.title}</div><div className="tls">{t.sub}</div></div></div>))}</div>
+
+            {/* SLA per-tahap — visible untuk semua role termasuk karyawan */}
+            {(() => {
+              const SLA_MAX = 2;
+              const slaStages = [
+                {
+                  label: "Tahap 1: Karyawan → Admin LK",
+                  start: trx.submitted,
+                  end: trx.docReceivedLkAt,
+                  active: !trx.docReceivedLkAt && ["pending"].includes(trx.status),
+                  skip: false,
+                },
+                {
+                  label: "Tahap 2: Admin LK → Admin JKT",
+                  start: trx.docReceivedLkAt,
+                  end: trx.docReceivedJktAt,
+                  active: !trx.docReceivedJktAt && ["doc_received_lk","doc_sent_jkt"].includes(trx.status),
+                  skip: !trx.docReceivedLkAt,
+                },
+                {
+                  label: "Tahap 3: Admin JKT → GA",
+                  start: trx.docReceivedJktAt,
+                  end: trx.docCompleteAt,
+                  active: !trx.docCompleteAt && ["doc_received_jkt"].includes(trx.status),
+                  skip: !trx.docReceivedJktAt,
+                },
+                {
+                  label: "Tahap 4: GA → Finance",
+                  start: trx.docCompleteAt,
+                  end: trx.settledDate,
+                  active: !trx.settledDate && ["doc_complete","approved","processing"].includes(trx.status),
+                  skip: !trx.docCompleteAt,
+                },
+              ];
+              const anyStarted = slaStages.some(s => s.start);
+              if (!anyStarted) return null;
+              return (
+                <div style={{marginTop:18,marginBottom:4}}>
+                  <p className="sl mb3" style={{display:"flex",alignItems:"center",gap:6}}>
+                    <Ic n="clock" s={12} c="var(--i3)"/> SLA per Tahap
+                    <span style={{fontSize:10,fontWeight:600,color:"var(--i3)",background:"var(--ln2)",padding:"1px 7px",borderRadius:10}}>maks {SLA_MAX} hari kerja</span>
+                  </p>
+                  <div style={{display:"flex",flexDirection:"column",gap:7}}>
+                    {slaStages.map((st, i) => {
+                      if (st.skip) return null;
+                      const days = st.start ? workdaysBetween(st.start, st.end || new Date().toISOString()) : 0;
+                      const done = !!st.end;
+                      const late = days > SLA_MAX;
+                      const warn = !done && days === SLA_MAX;
+                      const pct = Math.min(100, (days / (SLA_MAX + 1)) * 100);
+                      const barCol = done ? (late ? "#dc2626" : "#0d9488") : late ? "#dc2626" : warn ? "#d97706" : "#0d9488";
+                      const bgCol = done ? (late ? "#fff1f2" : "#f0fdfa") : late ? "#fff1f2" : warn ? "#fffbeb" : "#f0fdfa";
+                      const txtCol = done ? (late ? "#9f1239" : "#0f766e") : late ? "#9f1239" : warn ? "#92400e" : "#0f766e";
+                      return (
+                        <div key={i} style={{background:bgCol,borderRadius:8,padding:"9px 12px",border:`1px solid ${barCol}22`}}>
+                          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:5}}>
+                            <span style={{fontSize:11,fontWeight:700,color:"var(--ink)"}}>{st.label}</span>
+                            <span style={{fontSize:11,fontWeight:800,color:txtCol}}>
+                              {done
+                                ? (late ? `⚠ ${days} hk (terlambat)` : `✓ ${days} hk`)
+                                : st.active
+                                  ? (late ? `⚠ +${days} hk (sedang antri)` : `${days} hk (sedang antri)`)
+                                  : "–"}
+                            </span>
+                          </div>
+                          {(done || st.active) && (
+                            <div style={{height:4,borderRadius:4,background:"#e2e8f0",overflow:"hidden"}}>
+                              <div style={{height:"100%",width:`${pct}%`,background:barCol,borderRadius:4,transition:"width .4s"}}/>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })()}
             
             {isFin && ["approved","doc_complete"].includes(trx.status) && <div className="mt4 fs"><div className="fst">Mulai Proses</div><textarea value={note} onChange={e=>setNote(e.target.value)} placeholder="Catatan..." rows={2}/><button className="btn bp mt2" onClick={()=>act("process",note)} disabled={busy}>{busy?"Loading...":"Proses"}</button></div>}
             {isFin && trx.status==="processing" && <div className="mt4 fs"><div className="fst">Konfirmasi Bayar</div><p style={{fontSize:12,marginBottom:8}}>Transfer ke: <strong>{trx.submitter}</strong></p><label className="fl">Tgl Masuk Rekening (Opsional)</label><input type="date" value={tDate} onChange={e=>setTDate(e.target.value)}/><button className="btn bg mt2" onClick={()=>act("pay",note,tDate)} disabled={busy}>{busy?"Loading...":"Tandai Dibayar"}</button></div>}
